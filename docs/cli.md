@@ -1,6 +1,6 @@
-# ndrc CLI reference
+# NDRC CLI reference
 
-ndrc is a from-scratch C port of DRC, Uto's DAAD Reborn Compiler,
+NDRC (Next DAAD Reborn Compiler) is a from-scratch C port of DRC, Uto's DAAD Reborn Compiler,
 verified byte-identical against DRC's own drf+drb pipeline (the
 reference implementation: https://github.com/Utodev/DRC).
 DRC ships as two programs (a drf front end and a drb back end) joined
