@@ -128,11 +128,14 @@ jobs:
       - name: Build and test under C23
         run: make test STD=c23 CC=gcc-14 EXTRA=-Werror
 
-  # Packages a win64 release artifact when a GitHub Release is published,
-  # or on manual dispatch.
+  # Packages win64 and linux64 artifacts when a GitHub Release is
+  # published, or on manual dispatch. On a release it also attaches
+  # them to that release.
   release:
     needs: [test, test-clang, sanitize, cross-windows, oracle, backend, c23]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: Install mingw-w64
@@ -152,7 +155,7 @@ jobs:
           mkdir -p dist
           zip -j "dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip" \
             ndrc.exe LICENSE README.md docs/cli.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ndrc-${{ steps.version.outputs.ver }}-win64
           path: dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip
@@ -168,7 +171,19 @@ jobs:
         run: |
           tar -czf "dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz" \
             ndrc LICENSE README.md -C docs cli.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ndrc-${{ steps.version.outputs.ver }}-linux64
           path: dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz
+      # upload-artifact publishes WORKFLOW artifacts, which are not
+      # release assets - those are a separate API. gh ships on the
+      # runner; --clobber lets the job be re-run over its own output.
+      - name: Attach the packages to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release upload "${{ github.event.release.tag_name }}"
+          "dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip"
+          "dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz"
+          --clobber
