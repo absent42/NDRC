@@ -40,6 +40,11 @@ Elsewhere, with a C17 compiler and GNU make:
 
     make test
 
+## Other DAAD projects
+
+- [NextDAAD](https://github.com/absent42/NextDAAD) - ZX Spectrum Next DAAD interpreter
+- [DAAD DSF](https://github.com/absent42/DAAD-DSF) - VS Code extension with DAAD map preview, compiler-parity diagnostics and syntax highlighting
+
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
