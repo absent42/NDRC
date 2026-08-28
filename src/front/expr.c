@@ -37,6 +37,7 @@
 #include "expr.h"
 
 #include <errno.h>
+#include <float.h>
 #include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -1416,6 +1417,10 @@ static double fchk(Ctx *c, double r, int operands_finite)
    7. long double is the same 80-bit type on x86 gcc (LDBL_MANT_DIG 64);
    a target whose long double is only a Double may differ in the last
    ulp of a transcendental result. */
+#if LDBL_MANT_DIG < 64
+#error "NDRC needs an 80-bit long double. Where it is only a Double \
+(Apple arm64), an expression's 2^3 compiles to 7 instead of 8."
+#endif
 static double fstore(Ctx *c, long double r, int operands_finite)
 {
     return fchk(c, (double)r, operands_finite);
