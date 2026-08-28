@@ -10,6 +10,9 @@ FreePascal front end and a PHP back end), verified byte-identical
 against DRC's own drf+drb pipeline. Uto's DRC is the reference
 implementation: https://github.com/Utodev/DRC
 
+NDRC was made to streamline the toolchain of [NextDAAD](https://github.com/absent42/NextDAAD), however the compiler 
+is compliant with all DAAD targets and can be used as a substitute for DRC.
+
 ## Quick start
 
 The latest release can be downloaded from the [releases page](https://github.com/absent42/NDRC/releases).
