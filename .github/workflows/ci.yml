@@ -2,8 +2,8 @@
 name: ci
 
 on:
-  push:
-  pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -120,10 +120,9 @@ jobs:
       - name: Build and test under C23
         run: make test STD=c23 CC=gcc-14 EXTRA=-Werror
 
-  # Manual dispatch only - packages a win64 release artifact for the owner
-  # to attach to a GitHub Release drafted by hand. Never fires on push/PR.
+  # Packages a win64 release artifact when a GitHub Release is published,
+  # or on manual dispatch.
   release:
-    if: github.event_name == 'workflow_dispatch'
     needs: [test, sanitize, cross-windows, oracle, backend, c23]
     runs-on: ubuntu-latest
     steps:
