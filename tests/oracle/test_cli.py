@@ -55,6 +55,11 @@ def _resolve_ndrc() -> Path:
 
 NDRC = _resolve_ndrc()
 
+# Path separator ndrc prints in resolved .tok paths: tokens.c picks it
+# with #ifdef _WIN32 (NDRC_TOK_DIRSEP), so the echo follows the platform
+# the binary was built for, not the reference's Windows-only form.
+TOK_SEP = "\\" if os.name == "nt" else "/"
+
 
 def run(args, cwd=None):
     """Runs ndrc, returning (returncode, stdout-after-banner-line)."""
@@ -658,7 +663,11 @@ def test_to_json_accented_additional_symbol_folds():
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
         _dsf_copy(tmpdir)
-        sym = "caf" + chr(0xE9)  # "café" - lowercase e-acute, U+00E9
+        # argv carries BYTES, and the encoding is the platform's: Windows
+        # hands the str to CreateProcessW and the ANSI path lands one
+        # cp1252 0xE9, while POSIX would fsencode it to UTF-8 (0xC3 0xA9)
+        # and no cp1252 fold could then apply. Pass the raw byte there.
+        sym = ("caf" + chr(0xE9)) if os.name == "nt" else b"caf\xe9"
         proc = subprocess.run(
             [str(NDRC), "--to-json", "NEXTDAAD", "g.dsf", "out.json", "-verbose", sym],
             capture_output=True,
@@ -1818,6 +1827,7 @@ def test_join_tok_sidecar_is_discovered():
     """.tok discovery keys off the flow's JSON name, so a TOKFILE.tok
     beside TOKFILE.DSF is found exactly as the flow finds it beside
     TOKFILE.json - measured echo: "Loading tokens from .\\TOKFILE.tok.".
+    That separator is NDRC_TOK_DIRSEP and is "/" off Windows.
     A --json pointing elsewhere does NOT move the search."""
     tok_dsf = HERE.parent / "fixtures" / "TOKFILE.DSF"
     tok_side = HERE.parent / "fixtures" / "TOKFILE.tok"
@@ -1830,7 +1840,7 @@ def test_join_tok_sidecar_is_discovered():
             rc, out = run(["NEXTDAAD", "EN", "TOKFILE.DSF", "-v3", "-v",
                            *extra], cwd=str(tmpdir))
             check(rc == 0, f"tok {label}: expected exit 0, got {rc}\n{out}")
-            check("Loading tokens from .\\TOKFILE.tok.\n" in out,
+            check(f"Loading tokens from .{TOK_SEP}TOKFILE.tok.\n" in out,
                   f"tok {label}: override echo missing from {out!r}")
             built = tmpdir / "TOKFILE.DDB"
             check(built.exists(), f"tok {label}: expected TOKFILE.DDB")

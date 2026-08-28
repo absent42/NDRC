@@ -208,7 +208,7 @@ static void mml_boundary_case(const char *note, long expect_param1)
     int produced;
 
     CHECK(t != NULL);
-    if (t == NULL) return;
+    if (t == NULL) { arena_free(a); return; }
     CHECK_INT(t->duration_base_length, 230);
 
     values[XPLAY_OCTAVE] = 4;
@@ -220,6 +220,7 @@ static void mml_boundary_case(const char *note, long expect_param1)
     CHECK_INT(produced, 1);
     CHECK(c != NULL);
     if (c != NULL) CHECK_INT(c->Param1, expect_param1);
+    arena_free(a);
 }
 
 TEST(mml_duration_boundary_on_base_230)
