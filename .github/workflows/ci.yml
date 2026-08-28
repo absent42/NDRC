@@ -1,0 +1,149 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test
+        run: make test EXTRA=-Werror
+
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test under ASan and UBSan
+        run: make sanitize
+
+  cross-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: Cross-build for Windows
+        run: make CC=x86_64-w64-mingw32-gcc EXTRA=-Werror
+
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Matrix enumeration self-test
+        run: python tests/oracle/test_matrix.py
+      - name: Diff reporter self-test
+        run: python tests/oracle/test_diffreport.py
+      - name: Divergence registry self-test
+        run: python tests/oracle/test_divergence.py
+      - name: Reference runner self-test (fake toolchain)
+        run: python tests/oracle/test_reference.py
+      - name: Goldens match their manifest
+        run: python tests/oracle/verify.py --self-check
+      - name: lexconv self-test
+        run: python tests/oracle/test_lexconv.py
+      - name: lex_tables.h/lex_tables.canon consistency
+        run: python tests/oracle/lexconv.py --check
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Build ndrc
+        run: make ndrc EXTRA=-Werror
+      - name: Gate 1 - NEXTDAAD EN v3 opt
+        run: |
+          ./ndrc --from-json NEXTDAAD EN tests/fixtures/BLANK_EN.NEXTDAAD_EN_v3.json o1.ddb
+          cmp o1.ddb tests/goldens/BLANK_EN/NEXTDAAD_EN_v3_opt.ddb
+      - name: Gate 2 - ST EN v3 opt
+        run: |
+          ./ndrc --from-json ST EN tests/fixtures/BLANK_EN.ST_EN_v3.json o2.ddb
+          cmp o2.ddb tests/goldens/BLANK_EN/ST_EN_v3_opt.ddb
+      - name: Gate 3 - ST EN v3 classic
+        run: |
+          ./ndrc --from-json ST EN tests/fixtures/BLANK_EN.ST_EN_v3.json o3.ddb -c
+          cmp o3.ddb tests/goldens/BLANK_EN/ST_EN_v3_classic.ddb
+      - name: Gate 4 - ZX 48K EN v3 opt
+        run: |
+          ./ndrc --from-json ZX 48K EN tests/fixtures/BLANK_EN.ZX_48K_EN_v3.json o4.ddb
+          cmp o4.ddb tests/goldens/BLANK_EN/ZX_48K_EN_v3_opt.ddb
+      - name: Gate 5 - ZX 48K EN v3 classic
+        run: |
+          ./ndrc --from-json ZX 48K EN tests/fixtures/BLANK_EN.ZX_48K_EN_v3.json o5.ddb -c
+          cmp o5.ddb tests/goldens/BLANK_EN/ZX_48K_EN_v3_classic.ddb
+      - name: Gate 6 - EXTERNS NEXTDAAD EN v3 opt
+        run: |
+          (cd tests/fixtures && ../../ndrc --from-json NEXTDAAD EN EXTERNS.NEXTDAAD_EN_v3.json ../../o6.ddb)
+          cmp o6.ddb tests/goldens/EXTERNS/NEXTDAAD_EN_v3_opt.ddb
+      - name: Gate 7 - NEXTDAAD EN v3 opt -p
+        run: |
+          ./ndrc --from-json NEXTDAAD EN tests/fixtures/BLANK_EN.NEXTDAAD_EN_v3.json o7.ddb -p
+          cmp o7.ddb tests/goldens/BLANK_EN/NEXTDAAD_EN_v3_opt_p.ddb
+      - name: Gate 8 - THE PAIR GATE, to-json leg (no reference toolchain)
+        run: |
+          ./ndrc --to-json NEXTDAAD tests/fixtures/BLANK_EN.DSF out.json -v3
+          python tests/oracle/verify.py --to-json-compare out.json tests/fixtures/BLANK_EN.NEXTDAAD_EN_v3.json
+      - name: Gate 8 composition - to-json output round-tripped through from-json
+        run: |
+          ./ndrc --from-json NEXTDAAD EN out.json o8.ddb
+          cmp o8.ddb tests/goldens/BLANK_EN/NEXTDAAD_EN_v3_opt.ddb
+      - name: Gate 9 - THE MATRIX GATE, committed --to-json goldens
+        run: python tests/oracle/verify.py --to-json-goldens --ndrc ./ndrc
+      - name: Gate 10 - THE JOIN GOLDEN LEG, all 108 manifest pairs
+        run: python tests/oracle/verify.py --join --goldens-only --ndrc ./ndrc
+      - name: CLI argument-parsing tests
+        run: python tests/oracle/test_cli.py
+
+  c23:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Record the runner's compiler inventory
+        run: |
+          ls -1 /usr/bin/gcc-* || true
+          gcc --version | head -1
+          gcc-14 --version | head -1
+      - name: Build and test under C23
+        run: make test STD=c23 CC=gcc-14 EXTRA=-Werror
+
+  # Manual dispatch only - packages a win64 release artifact for the owner
+  # to attach to a GitHub Release drafted by hand. Never fires on push/PR.
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [test, sanitize, cross-windows, oracle, backend, c23]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: Cross-build for Windows
+        run: make ndrc CC=x86_64-w64-mingw32-gcc EXTRA=-Werror
+      - name: Extract version from source
+        id: version
+        run: |
+          ver=$(sed -n 's/^#define NDRC_VERSION "\(.*\)"/\1/p' src/main.c)
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+      - name: Assemble release package
+        run: |
+          mv ndrc ndrc.exe
+          mkdir -p dist
+          zip -j "dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip" \
+            ndrc.exe LICENSE README.md docs/cli.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ndrc-${{ steps.version.outputs.ver }}-win64
+          path: dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip

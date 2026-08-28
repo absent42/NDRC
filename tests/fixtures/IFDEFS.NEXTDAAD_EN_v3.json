@@ -1,0 +1,1588 @@
+{
+"settings":
+	[
+	{"classic_mode":0, "debug_mode":0, "v3code":1, "maluva_used":0}
+	],
+"symbols":
+	[
+		{"symbol":"NUM_WORN", "Value":0},
+		{"symbol":"NUM_CARRIED", "Value":1},
+		{"symbol":"NUM_LOCATIONS", "Value":3},
+		{"symbol":"LAST_LOCATION", "Value":2},
+		{"symbol":"NUM_OBJECTS", "Value":1},
+		{"symbol":"LAST_OBJECT", "Value":0},
+		{"symbol":"_VOC_THEN", "Value":2},
+		{"symbol":"_VOC_AND", "Value":2},
+		{"symbol":"_VOC_THEM", "Value":2},
+		{"symbol":"_VOC_IT", "Value":2},
+		{"symbol":"_VOC_EXCEP", "Value":13},
+		{"symbol":"_VOC_AT", "Value":12},
+		{"symbol":"_VOC_OFF", "Value":11},
+		{"symbol":"_VOC_ON", "Value":10},
+		{"symbol":"_VOC_BY", "Value":9},
+		{"symbol":"_VOC_UNDER", "Value":8},
+		{"symbol":"_VOC_OVER", "Value":7},
+		{"symbol":"_VOC_THROU", "Value":6},
+		{"symbol":"_VOC_OUT", "Value":5},
+		{"symbol":"_VOC_IN", "Value":4},
+		{"symbol":"_VOC_FROM", "Value":3},
+		{"symbol":"_VOC_TO", "Value":2},
+		{"symbol":"_VOC_GENTL", "Value":6},
+		{"symbol":"_VOC_SOFTL", "Value":6},
+		{"symbol":"_VOC_CAREF", "Value":6},
+		{"symbol":"_VOC_LOUDL", "Value":5},
+		{"symbol":"_VOC_QUIET", "Value":4},
+		{"symbol":"_VOC_SLOWL", "Value":3},
+		{"symbol":"_VOC_QUICK", "Value":2},
+		{"symbol":"_VOC_LONG", "Value":9},
+		{"symbol":"_VOC_SHORT", "Value":8},
+		{"symbol":"_VOC_SOFT", "Value":7},
+		{"symbol":"_VOC_HARD", "Value":6},
+		{"symbol":"_VOC_NEW", "Value":5},
+		{"symbol":"_VOC_OLD", "Value":4},
+		{"symbol":"_VOC_LARGE", "Value":3},
+		{"symbol":"_VOC_BIG", "Value":3},
+		{"symbol":"_VOC_SMALL", "Value":2},
+		{"symbol":"_VOC_SPEAK", "Value":31},
+		{"symbol":"_VOC_TALK", "Value":31},
+		{"symbol":"_VOC_ASK", "Value":31},
+		{"symbol":"_VOC_SAY", "Value":31},
+		{"symbol":"_VOC_EXAMI", "Value":30},
+		{"symbol":"_VOC_LOOK", "Value":30},
+		{"symbol":"_VOC_RAMLO", "Value":29},
+		{"symbol":"_VOC_RAMSA", "Value":28},
+		{"symbol":"_VOC_LOAD", "Value":27},
+		{"symbol":"_VOC_SAVE", "Value":26},
+		{"symbol":"_VOC_STOP", "Value":25},
+		{"symbol":"_VOC_Q", "Value":25},
+		{"symbol":"_VOC_QUIT", "Value":25},
+		{"symbol":"_VOC_REDES", "Value":24},
+		{"symbol":"_VOC_R", "Value":24},
+		{"symbol":"_VOC_WEAR", "Value":23},
+		{"symbol":"_VOC_REMOV", "Value":22},
+		{"symbol":"_VOC_PUT", "Value":21},
+		{"symbol":"_VOC_DROP", "Value":21},
+		{"symbol":"_VOC_TAKE", "Value":20},
+		{"symbol":"_VOC_GET", "Value":20},
+		{"symbol":"_VOC_TORCH", "Value":100},
+		{"symbol":"_VOC_EVERY", "Value":20},
+		{"symbol":"_VOC_LOT", "Value":20},
+		{"symbol":"_VOC_ALL", "Value":20},
+		{"symbol":"_VOC_INVEN", "Value":14},
+		{"symbol":"_VOC_I", "Value":14},
+		{"symbol":"_VOC_DESCE", "Value":11},
+		{"symbol":"_VOC_DOWN", "Value":11},
+		{"symbol":"_VOC_D", "Value":11},
+		{"symbol":"_VOC_ASCEN", "Value":10},
+		{"symbol":"_VOC_UP", "Value":10},
+		{"symbol":"_VOC_U", "Value":10},
+		{"symbol":"_VOC_SW", "Value":9},
+		{"symbol":"_VOC_SE", "Value":8},
+		{"symbol":"_VOC_NW", "Value":7},
+		{"symbol":"_VOC_NE", "Value":6},
+		{"symbol":"_VOC_WEST", "Value":5},
+		{"symbol":"_VOC_W", "Value":5},
+		{"symbol":"_VOC_EAST", "Value":4},
+		{"symbol":"_VOC_E", "Value":4},
+		{"symbol":"_VOC_SOUTH", "Value":3},
+		{"symbol":"_VOC_S", "Value":3},
+		{"symbol":"_VOC_NORTH", "Value":2},
+		{"symbol":"_VOC_N", "Value":2},
+		{"symbol":"FCURRENTWINDOW", "Value":63},
+		{"symbol":"FSCREENMODE", "Value":62},
+		{"symbol":"FINKEYKEY2", "Value":61},
+		{"symbol":"FINKEYKEY1", "Value":60},
+		{"symbol":"FREFOBJATTR2", "Value":59},
+		{"symbol":"FREFOBJATTR1", "Value":58},
+		{"symbol":"FREFOBJISWEARABLE", "Value":57},
+		{"symbol":"FREFOBJISCONTAINER", "Value":56},
+		{"symbol":"FREFOBJWEIGHT", "Value":55},
+		{"symbol":"FREFOBJLOC", "Value":54},
+		{"symbol":"FOBJFLAGS", "Value":53},
+		{"symbol":"FSTRENGTH", "Value":52},
+		{"symbol":"FREFOBJECT", "Value":51},
+		{"symbol":"FDOALLOBJNO", "Value":50},
+		{"symbol":"FTIMEOUTFLAGS", "Value":49},
+		{"symbol":"FTIMEOUT", "Value":48},
+		{"symbol":"FCPRONOUNADJECT", "Value":47},
+		{"symbol":"FCPRONOUNNOUN", "Value":46},
+		{"symbol":"FADJECT2", "Value":45},
+		{"symbol":"FNOUN2", "Value":44},
+		{"symbol":"FPREP", "Value":43},
+		{"symbol":"FPLAYER", "Value":38},
+		{"symbol":"FMAXCARR", "Value":37},
+		{"symbol":"FADVERB", "Value":36},
+		{"symbol":"FADJECT1", "Value":35},
+		{"symbol":"FNOUN", "Value":34},
+		{"symbol":"FVERB", "Value":33},
+		{"symbol":"FTURNSHI", "Value":32},
+		{"symbol":"FTURNS", "Value":31},
+		{"symbol":"FSCORE", "Value":30},
+		{"symbol":"USERSYM", "Value":1},
+		{"symbol":"FGFLAGS", "Value":29},
+		{"symbol":"FDARKF", "Value":28},
+		{"symbol":"FOBJECTSCARRIED", "Value":1},
+		{"symbol":"FDARK", "Value":0},
+		{"symbol":"TIMEOUT", "Value":87},
+		{"symbol":"V3", "Value":1},
+		{"symbol":"DELTAYMS", "Value":7},
+		{"symbol":"DELTAXMS", "Value":6},
+		{"symbol":"POINTERMS", "Value":5},
+		{"symbol":"GETFINEMS", "Value":4},
+		{"symbol":"GETMS", "Value":3},
+		{"symbol":"HIDEMS", "Value":2},
+		{"symbol":"SHOWMS", "Value":1},
+		{"symbol":"RESETMS", "Value":0},
+		{"symbol":"PLAYFLIL", "Value":10},
+		{"symbol":"PLAYFLI", "Value":9},
+		{"symbol":"STOPDRO", "Value":8},
+		{"symbol":"PLAYDROL", "Value":7},
+		{"symbol":"PLAYDRO", "Value":6},
+		{"symbol":"STOPSFX", "Value":5},
+		{"symbol":"PLAYSFXFL", "Value":4},
+		{"symbol":"PLAYSFXF", "Value":3},
+		{"symbol":"PLAYSFXL", "Value":2},
+		{"symbol":"PLAYSFX", "Value":1},
+		{"symbol":"DAY", "Value":27},
+		{"symbol":"MONTH", "Value":8},
+		{"symbol":"YEARLOW", "Value":26},
+		{"symbol":"YEARHIGH", "Value":20},
+		{"symbol":"HERE", "Value":255},
+		{"symbol":"WORN", "Value":253},
+		{"symbol":"NON_CREATED", "Value":252},
+		{"symbol":"NOT_CREATED", "Value":252},
+		{"symbol":"CARRIED", "Value":254},
+		{"symbol":"ROWS", "Value":32},
+		{"symbol":"COLS", "Value":80},
+		{"symbol":"BIT8", "Value":1},
+		{"symbol":"NEXTDAAD", "Value":1}
+	],
+"externs":
+	[
+	],
+"vocabulary":
+	[
+		{"VocWord":"ALL", "Value":20,"VocType":2 },
+		{"VocWord":"AND", "Value":2,"VocType":5 },
+		{"VocWord":"ASCEN", "Value":10,"VocType":0 },
+		{"VocWord":"ASK", "Value":31,"VocType":0 },
+		{"VocWord":"AT", "Value":12,"VocType":4 },
+		{"VocWord":"BIG", "Value":3,"VocType":3 },
+		{"VocWord":"BY", "Value":9,"VocType":4 },
+		{"VocWord":"CAREF", "Value":6,"VocType":1 },
+		{"VocWord":"D", "Value":11,"VocType":2 },
+		{"VocWord":"DESCE", "Value":11,"VocType":0 },
+		{"VocWord":"DOWN", "Value":11,"VocType":2 },
+		{"VocWord":"DROP", "Value":21,"VocType":0 },
+		{"VocWord":"E", "Value":4,"VocType":2 },
+		{"VocWord":"EAST", "Value":4,"VocType":2 },
+		{"VocWord":"EVERY", "Value":20,"VocType":2 },
+		{"VocWord":"EXAMI", "Value":30,"VocType":0 },
+		{"VocWord":"EXCEP", "Value":13,"VocType":4 },
+		{"VocWord":"FROM", "Value":3,"VocType":4 },
+		{"VocWord":"GENTL", "Value":6,"VocType":1 },
+		{"VocWord":"GET", "Value":20,"VocType":0 },
+		{"VocWord":"HARD", "Value":6,"VocType":3 },
+		{"VocWord":"I", "Value":14,"VocType":2 },
+		{"VocWord":"IN", "Value":4,"VocType":4 },
+		{"VocWord":"INVEN", "Value":14,"VocType":2 },
+		{"VocWord":"IT", "Value":2,"VocType":6 },
+		{"VocWord":"LARGE", "Value":3,"VocType":3 },
+		{"VocWord":"LOAD", "Value":27,"VocType":0 },
+		{"VocWord":"LONG", "Value":9,"VocType":3 },
+		{"VocWord":"LOOK", "Value":30,"VocType":0 },
+		{"VocWord":"LOT", "Value":20,"VocType":2 },
+		{"VocWord":"LOUDL", "Value":5,"VocType":1 },
+		{"VocWord":"N", "Value":2,"VocType":2 },
+		{"VocWord":"NE", "Value":6,"VocType":2 },
+		{"VocWord":"NEW", "Value":5,"VocType":3 },
+		{"VocWord":"NORTH", "Value":2,"VocType":2 },
+		{"VocWord":"NW", "Value":7,"VocType":2 },
+		{"VocWord":"OFF", "Value":11,"VocType":4 },
+		{"VocWord":"OLD", "Value":4,"VocType":3 },
+		{"VocWord":"ON", "Value":10,"VocType":4 },
+		{"VocWord":"OUT", "Value":5,"VocType":4 },
+		{"VocWord":"OVER", "Value":7,"VocType":4 },
+		{"VocWord":"PUT", "Value":21,"VocType":0 },
+		{"VocWord":"Q", "Value":25,"VocType":0 },
+		{"VocWord":"QUICK", "Value":2,"VocType":1 },
+		{"VocWord":"QUIET", "Value":4,"VocType":1 },
+		{"VocWord":"QUIT", "Value":25,"VocType":0 },
+		{"VocWord":"R", "Value":24,"VocType":0 },
+		{"VocWord":"RAMLO", "Value":29,"VocType":0 },
+		{"VocWord":"RAMSA", "Value":28,"VocType":0 },
+		{"VocWord":"REDES", "Value":24,"VocType":0 },
+		{"VocWord":"REMOV", "Value":22,"VocType":0 },
+		{"VocWord":"S", "Value":3,"VocType":2 },
+		{"VocWord":"SAVE", "Value":26,"VocType":0 },
+		{"VocWord":"SAY", "Value":31,"VocType":0 },
+		{"VocWord":"SE", "Value":8,"VocType":2 },
+		{"VocWord":"SHORT", "Value":8,"VocType":3 },
+		{"VocWord":"SLOWL", "Value":3,"VocType":1 },
+		{"VocWord":"SMALL", "Value":2,"VocType":3 },
+		{"VocWord":"SOFT", "Value":7,"VocType":3 },
+		{"VocWord":"SOFTL", "Value":6,"VocType":1 },
+		{"VocWord":"SOUTH", "Value":3,"VocType":2 },
+		{"VocWord":"SPEAK", "Value":31,"VocType":0 },
+		{"VocWord":"STOP", "Value":25,"VocType":0 },
+		{"VocWord":"SW", "Value":9,"VocType":2 },
+		{"VocWord":"TAKE", "Value":20,"VocType":0 },
+		{"VocWord":"TALK", "Value":31,"VocType":0 },
+		{"VocWord":"THEM", "Value":2,"VocType":6 },
+		{"VocWord":"THEN", "Value":2,"VocType":5 },
+		{"VocWord":"THROU", "Value":6,"VocType":4 },
+		{"VocWord":"TO", "Value":2,"VocType":4 },
+		{"VocWord":"TORCH", "Value":100,"VocType":2 },
+		{"VocWord":"U", "Value":10,"VocType":2 },
+		{"VocWord":"UNDER", "Value":8,"VocType":4 },
+		{"VocWord":"UP", "Value":10,"VocType":2 },
+		{"VocWord":"W", "Value":5,"VocType":2 },
+		{"VocWord":"WEAR", "Value":23,"VocType":0 },
+		{"VocWord":"WEST", "Value":5,"VocType":2 }
+	],
+"object_data":
+	[
+	{
+		"Value":0,
+		"Noun":100,
+		"Adjective":255,
+		"Container":0,
+		"Wearable":0,
+		"Flags":0,
+		"Weight":1,
+		"InitialyAt":254
+	}
+	],
+"connections":
+	[
+	{
+		"FromLoc":1,
+		"ToLoc":2,
+		"Direction":2
+	},
+	{
+		"FromLoc":2,
+		"ToLoc":1,
+		"Direction":3
+	}
+	],
+"messages":
+	[
+	{
+		"Value":0,
+		"Text":""
+	}
+	],
+"sysmess":
+	[
+	{
+		"Value":0,
+		"Text":"It's too dark to see anything."
+	},
+	{
+		"Value":1,
+		"Text":"I can also see: "
+	},
+	{
+		"Value":2,
+		"Text":"\u000dWhat now?"
+	},
+	{
+		"Value":3,
+		"Text":"\u000dWhat next?"
+	},
+	{
+		"Value":4,
+		"Text":"\u000dWhat should I do now?"
+	},
+	{
+		"Value":5,
+		"Text":"\u000dWhat should I do next?"
+	},
+	{
+		"Value":6,
+		"Text":"\u000dI was not able to understand any of that.  Please try again."
+	},
+	{
+		"Value":7,
+		"Text":"\u000dI can't go in that direction."
+	},
+	{
+		"Value":8,
+		"Text":"I can't do that.\u000d"
+	},
+	{
+		"Value":9,
+		"Text":"I have with me:\u000d"
+	},
+	{
+		"Value":10,
+		"Text":"I am wearing:\u000d"
+	},
+	{
+		"Value":11,
+		"Text":""
+	},
+	{
+		"Value":12,
+		"Text":"Are you sure? "
+	},
+	{
+		"Value":13,
+		"Text":"Would you like another go? "
+	},
+	{
+		"Value":14,
+		"Text":""
+	},
+	{
+		"Value":15,
+		"Text":"OK.\u000d"
+	},
+	{
+		"Value":16,
+		"Text":"Press any key to continue.\u000d"
+	},
+	{
+		"Value":17,
+		"Text":""
+	},
+	{
+		"Value":18,
+		"Text":""
+	},
+	{
+		"Value":19,
+		"Text":""
+	},
+	{
+		"Value":20,
+		"Text":""
+	},
+	{
+		"Value":21,
+		"Text":""
+	},
+	{
+		"Value":22,
+		"Text":""
+	},
+	{
+		"Value":23,
+		"Text":"I'm not wearing one of those.\u000d"
+	},
+	{
+		"Value":24,
+		"Text":"I can't.  I'm wearing the _."
+	},
+	{
+		"Value":25,
+		"Text":"I already have the _."
+	},
+	{
+		"Value":26,
+		"Text":"There isn't one of those here."
+	},
+	{
+		"Value":27,
+		"Text":"I can't carry any more things."
+	},
+	{
+		"Value":28,
+		"Text":"I don't have one of those."
+	},
+	{
+		"Value":29,
+		"Text":"I'm already wearing the _."
+	},
+	{
+		"Value":30,
+		"Text":"Y"
+	},
+	{
+		"Value":31,
+		"Text":"N"
+	},
+	{
+		"Value":32,
+		"Text":"More..."
+	},
+	{
+		"Value":33,
+		"Text":"\u000d>"
+	},
+	{
+		"Value":34,
+		"Text":""
+	},
+	{
+		"Value":35,
+		"Text":"\u000dTime passes...\u000d"
+	},
+	{
+		"Value":36,
+		"Text":"I now have the _.\u000d"
+	},
+	{
+		"Value":37,
+		"Text":"I'm now wearing the _.\u000d"
+	},
+	{
+		"Value":38,
+		"Text":"I've removed the _.\u000d"
+	},
+	{
+		"Value":39,
+		"Text":"I've dropped the _.\u000d"
+	},
+	{
+		"Value":40,
+		"Text":"I can't wear the _.\u000d"
+	},
+	{
+		"Value":41,
+		"Text":"I can't remove the _.\u000d"
+	},
+	{
+		"Value":42,
+		"Text":"I can't remove the _.  My hands are full.\u000d"
+	},
+	{
+		"Value":43,
+		"Text":"The _ weighs too much for me.\u000d"
+	},
+	{
+		"Value":44,
+		"Text":"\u000dThe _ is in the "
+	},
+	{
+		"Value":45,
+		"Text":"The _ isn't in the "
+	},
+	{
+		"Value":46,
+		"Text":", "
+	},
+	{
+		"Value":47,
+		"Text":" and "
+	},
+	{
+		"Value":48,
+		"Text":".\u000d"
+	},
+	{
+		"Value":49,
+		"Text":"I don't have the _.\u000d"
+	},
+	{
+		"Value":50,
+		"Text":"I'm not wearing the _.\u000d"
+	},
+	{
+		"Value":51,
+		"Text":".\u000d"
+	},
+	{
+		"Value":52,
+		"Text":"There isn't one of those in the "
+	},
+	{
+		"Value":53,
+		"Text":"Nothing.\u000d"
+	},
+	{
+		"Value":54,
+		"Text":"T"
+	},
+	{
+		"Value":55,
+		"Text":"D"
+	},
+	{
+		"Value":56,
+		"Text":"Drive not ready - press any key to retry.\u000d"
+	},
+	{
+		"Value":57,
+		"Text":"I/O Error.\u000d"
+	},
+	{
+		"Value":58,
+		"Text":"Disc or Directory may be full."
+	},
+	{
+		"Value":59,
+		"Text":"Invalid filename."
+	},
+	{
+		"Value":60,
+		"Text":"Type in name of file:"
+	},
+	{
+		"Value":61,
+		"Text":"Start tape.\u000d"
+	},
+	{
+		"Value":62,
+		"Text":"Tape or Disc?"
+	}
+	],
+"locations":
+	[
+	{
+		"Value":0,
+		"Text":"EMPTY DATABASE - DAAD V2."
+	},
+	{
+		"Value":1,
+		"Text":"I'm at location number one. A road leads north."
+	},
+	{
+		"Value":2,
+		"Text":"I'm at location number two. A road leads south."
+	}
+	],
+"objects":
+	[
+	{
+		"Value":0,
+		"Text":"A pocket torch. (lit)"
+	}
+	],
+"xmessages":
+	[
+	],
+"other_strings":
+	[
+	],
+"processes":
+	[
+	{
+		"Value":0,
+		"entries":
+			[
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":0,
+						"Condact":"AT",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":75,
+						"Condact":"PROCESS",
+						"Indirection1":0,
+						"Param1":6,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":78,
+						"Condact":"WINDOW",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":48,
+						"Condact":"CLEAR",
+						"Indirection1":0,
+						"Param1":28,
+						"NumParams":1
+					},
+					{
+						"Opcode":12,
+						"Condact":"NOTZERO",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":5,
+						"Condact":"ABSENT",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":28,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":84,
+						"Condact":"PICTURE",
+						"Indirection1":1,
+						"Param1":38,
+						"NumParams":1
+					},
+					{
+						"Opcode":28,
+						"Condact":"DISPLAY",
+						"Indirection1":1,
+						"Param1":28,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":78,
+						"Condact":"WINDOW",
+						"Indirection1":0,
+						"Param1":1,
+						"NumParams":1
+					},
+					{
+						"Opcode":12,
+						"Condact":"NOTZERO",
+						"Indirection1":0,
+						"Param1":28,
+						"NumParams":1
+					},
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":11,
+						"Condact":"ZERO",
+						"Indirection1":0,
+						"Param1":28,
+						"NumParams":1
+					},
+					{
+						"Opcode":19,
+						"Condact":"DESC",
+						"Indirection1":1,
+						"Param1":38,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":75,
+						"Condact":"PROCESS",
+						"Indirection1":0,
+						"Param1":3,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":75,
+						"Condact":"PROCESS",
+						"Indirection1":0,
+						"Param1":1,
+						"NumParams":1
+					}
+					]
+			}
+			]
+	},
+	{
+		"Value":1,
+		"entries":
+			[
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":75,
+						"Condact":"PROCESS",
+						"Indirection1":0,
+						"Param1":4,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":73,
+						"Condact":"PARSE",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":75,
+						"Condact":"PROCESS",
+						"Indirection1":0,
+						"Param1":2,
+						"NumParams":1
+					},
+					{
+						"Opcode":108,
+						"Condact":"REDO",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":13,
+						"Condact":"EQ",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":31,
+						"Param2":255,
+						"NumParams":2
+					},
+					{
+						"Opcode":49,
+						"Condact":"PLUS",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":32,
+						"Param2":1,
+						"NumParams":2
+					},
+					{
+						"Opcode":48,
+						"Condact":"CLEAR",
+						"Indirection1":0,
+						"Param1":31,
+						"NumParams":1
+					},
+					{
+						"Opcode":116,
+						"Condact":"SKIP",
+						"Indirection1":0,
+						"Param1":1,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":49,
+						"Condact":"PLUS",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":31,
+						"Param2":1,
+						"NumParams":2
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":75,
+						"Condact":"PROCESS",
+						"Indirection1":0,
+						"Param1":5,
+						"NumParams":1
+					},
+					{
+						"Opcode":114,
+						"Condact":"ISDONE",
+						"NumParams":0
+					},
+					{
+						"Opcode":108,
+						"Condact":"REDO",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":106,
+						"Condact":"MOVE",
+						"Indirection1":0,
+						"Param1":38,
+						"NumParams":1
+					},
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":92,
+						"Condact":"NEWTEXT",
+						"NumParams":0
+					},
+					{
+						"Opcode":15,
+						"Condact":"LT",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":33,
+						"Param2":14,
+						"NumParams":2
+					},
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":7,
+						"NumParams":1
+					},
+					{
+						"Opcode":108,
+						"Condact":"REDO",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":8,
+						"NumParams":1
+					},
+					{
+						"Opcode":108,
+						"Condact":"REDO",
+						"NumParams":0
+					}
+					]
+			}
+			]
+	},
+	{
+		"Value":2,
+		"entries":
+			[
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":58,
+						"Condact":"HASAT",
+						"Indirection1":0,
+						"Param1":87,
+						"NumParams":1
+					},
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":35,
+						"NumParams":1
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":6,
+						"NumParams":1
+					}
+					]
+			}
+			]
+	},
+	{
+		"Value":3,
+		"entries":
+			[
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":52,
+						"Condact":"NEWLINE",
+						"NumParams":0
+					},
+					{
+						"Opcode":11,
+						"Condact":"ZERO",
+						"Indirection1":0,
+						"Param1":28,
+						"NumParams":1
+					},
+					{
+						"Opcode":60,
+						"Condact":"LISTOBJ",
+						"NumParams":0
+					}
+					]
+			}
+			]
+	},
+	{
+		"Value":4,
+		"entries":
+			[
+			]
+	},
+	{
+		"Value":5,
+		"entries":
+			[
+			{
+				"Entry":"I _",
+				"Verb":14,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":9,
+						"NumParams":1
+					},
+					{
+						"Opcode":74,
+						"Condact":"LISTAT",
+						"Indirection1":0,
+						"Param1":254,
+						"NumParams":1
+					},
+					{
+						"Opcode":54,
+						"Condact":"SYSMESS",
+						"Indirection1":0,
+						"Param1":10,
+						"NumParams":1
+					},
+					{
+						"Opcode":74,
+						"Condact":"LISTAT",
+						"Indirection1":0,
+						"Param1":253,
+						"NumParams":1
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"GET ALL",
+				"Verb":20,
+				"Noun":20,
+				"condacts":
+					[
+					{
+						"Opcode":85,
+						"Condact":"DOALL",
+						"Indirection1":0,
+						"Param1":255,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"GET _",
+				"Verb":20,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":31,
+						"Condact":"AUTOG",
+						"NumParams":0
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"DROP ALL",
+				"Verb":21,
+				"Noun":20,
+				"condacts":
+					[
+					{
+						"Opcode":85,
+						"Condact":"DOALL",
+						"Indirection1":0,
+						"Param1":254,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"DROP _",
+				"Verb":21,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":32,
+						"Condact":"AUTOD",
+						"NumParams":0
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"REMOV ALL",
+				"Verb":22,
+				"Noun":20,
+				"condacts":
+					[
+					{
+						"Opcode":85,
+						"Condact":"DOALL",
+						"Indirection1":0,
+						"Param1":253,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"REMOV _",
+				"Verb":22,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":34,
+						"Condact":"AUTOR",
+						"NumParams":0
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"WEAR ALL",
+				"Verb":23,
+				"Noun":20,
+				"condacts":
+					[
+					{
+						"Opcode":85,
+						"Condact":"DOALL",
+						"Indirection1":0,
+						"Param1":254,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"WEAR _",
+				"Verb":23,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":33,
+						"Condact":"AUTOW",
+						"NumParams":0
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"R _",
+				"Verb":24,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"QUIT _",
+				"Verb":25,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":20,
+						"Condact":"QUIT",
+						"NumParams":0
+					},
+					{
+						"Opcode":21,
+						"Condact":"END",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"QUIT _",
+				"Verb":25,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"SAVE _",
+				"Verb":26,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":25,
+						"Condact":"SAVE",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"LOAD _",
+				"Verb":27,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":26,
+						"Condact":"LOAD",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"RAMSA _",
+				"Verb":28,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":62,
+						"Condact":"RAMSAVE",
+						"NumParams":0
+					},
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"RAMLO _",
+				"Verb":29,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":63,
+						"Condact":"RAMLOAD",
+						"Indirection1":0,
+						"Param1":255,
+						"NumParams":1
+					},
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"EXAMI _",
+				"Verb":30,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":117,
+						"Condact":"RESTART",
+						"NumParams":0
+					}
+					]
+			}
+			]
+	},
+	{
+		"Value":6,
+		"entries":
+			[
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":78,
+						"Condact":"WINDOW",
+						"Indirection1":0,
+						"Param1":1,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":82,
+						"Condact":"WINAT",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":14,
+						"Param2":0,
+						"NumParams":2
+					},
+					{
+						"Opcode":107,
+						"Condact":"WINSIZE",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":25,
+						"Param2":127,
+						"NumParams":2
+					},
+					{
+						"Opcode":29,
+						"Condact":"CLS",
+						"NumParams":0
+					},
+					{
+						"Opcode":19,
+						"Condact":"DESC",
+						"Indirection1":0,
+						"Param1":0,
+						"NumParams":1
+					},
+					{
+						"Opcode":24,
+						"Condact":"ANYKEY",
+						"NumParams":0
+					},
+					{
+						"Opcode":29,
+						"Condact":"CLS",
+						"NumParams":0
+					},
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":255,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":50,
+						"Condact":"MINUS",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":255,
+						"Param2":1,
+						"NumParams":2
+					},
+					{
+						"Opcode":79,
+						"Condact":"NOTEQ",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":255,
+						"Param2":29,
+						"NumParams":2
+					},
+					{
+						"Opcode":48,
+						"Condact":"CLEAR",
+						"Indirection1":1,
+						"Param1":255,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":12,
+						"Condact":"NOTZERO",
+						"Indirection1":0,
+						"Param1":255,
+						"NumParams":1
+					},
+					{
+						"Opcode":116,
+						"Condact":"SKIP",
+						"Indirection1":0,
+						"Param1":254,
+						"NumParams":1
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":127,
+						"Condact":"RESET",
+						"NumParams":0
+					},
+					{
+						"Opcode":51,
+						"Condact":"LET",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":52,
+						"Param2":10,
+						"NumParams":2
+					},
+					{
+						"Opcode":51,
+						"Condact":"LET",
+						"Indirection1":0,
+						"Indirection2":0,
+						"Param1":37,
+						"Param2":4,
+						"NumParams":2
+					},
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":46,
+						"NumParams":1
+					},
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":47,
+						"NumParams":1
+					},
+					{
+						"Opcode":37,
+						"Condact":"GOTO",
+						"Indirection1":0,
+						"Param1":1,
+						"NumParams":1
+					}
+					]
+			}
+			]
+	},
+	{
+		"Value":7,
+		"entries":
+			[
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":10,
+						"NumParams":1
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":11,
+						"NumParams":1
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			},
+			{
+				"Entry":"_ _",
+				"Verb":255,
+				"Noun":255,
+				"condacts":
+					[
+					{
+						"Opcode":47,
+						"Condact":"SET",
+						"Indirection1":0,
+						"Param1":14,
+						"NumParams":1
+					},
+					{
+						"Opcode":22,
+						"Condact":"DONE",
+						"NumParams":0
+					}
+					]
+			}
+			]
+	}
+	]
+}

@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Byte-exact fixtures
+tests/fixtures/BLANK_EN.NEXTDAAD_EN_v3.json -text
+tests/fixtures/BLANK_EN.ST_EN_v3.json -text
+tests/fixtures/BLANK_EN.ZX_48K_EN_v3.json -text
+tests/fixtures/EXTERNS.NEXTDAAD_EN_v3.json -text
+tests/fixtures/EXPR.NEXTDAAD_EN_v3.json -text
+tests/fixtures/IFDEFS.NEXTDAAD_EN_v3.json -text
+tests/fixtures/IFDEFS.PC_VGA_EN_v3.json -text
+tests/fixtures/IFDEFS.HTML_EN_v3.json -text
+tests/fixtures/INCLUDE.NEXTDAAD_EN_v3.json -text
+tests/fixtures/XMSG.NEXTDAAD_EN_v3.json -text
+tests/fixtures/BLANK_ES.NEXTDAAD_ES_v3.json -text
+
+# EXTERNS fixture assets
+tests/fixtures/EXT_MAIN.BIN -text
+tests/fixtures/EXT_SFX.BIN -text
+tests/fixtures/EXT_INT.BIN -text
+
+# INCLUDE.DSF
+tests/fixtures/INC_DATA.BIN -text
+
+# lexconv.py
+src/front/lex_tables.h -text
+tests/oracle/lex_tables.canon -text

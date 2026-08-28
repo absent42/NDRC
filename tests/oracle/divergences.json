@@ -1,0 +1,4 @@
+{
+  "_comment": "Deliberate, ruled-on differences between NDRC and reference DRC. Two mechanisms carry them: this registry, for byte-range divergences inside a compared artifact, every entry naming the ruling that authorised it; and code-level carve-outs in verify.py for whole-artifact/transcript shapes a registry entry cannot express (the refusal cells' reference-side partial DDB and XMB sidecars, and drb.php's stray lone-'.' line), each citing its owner ruling at its own site. A difference covered by neither is a test failure.",
+  "divergences": []
+}

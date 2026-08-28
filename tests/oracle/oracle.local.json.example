@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy to oracle.local.json and set paths for this machine. The DRF binary must carry the NEXTDAAD target: build it from the fork with 'fpc drf.pas' if unsure, because the DRF shipped with DAAD Ready does not have it.",
+  "drf": "D:/DRC/src/drf.exe",
+  "php": "D:/NextDAAD/tools/DAAD-READY/PHP/php.exe",
+  "drb": "D:/DRC/src/drb.php",
+  "workdir": "D:/NDRC/tests/work"
+}

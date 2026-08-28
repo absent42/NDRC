@@ -1,0 +1,1794 @@
+/CTL
+_
+/VOC
+NORTH  2  noun
+SOUTH  3  noun
+GET   100 verb
+DROP  101 verb
+BOX   50  noun
+LAMP  51  noun
+COIN  52  noun
+HAT   53  noun
+ALL   20  noun
+AND   200 conjugation
+IT    201 pronoun
+SMALL 202 adjective
+IN    203 preposition
+EXAMI 104 verb
+; SP16 Task 3 (object resolution, checks 87-96). Nouns 54-57 and
+; adjectives 204/205 are new and collide with nothing above.
+SWORD 54  noun
+ROBE  55  noun
+BAG   56  noun
+GEM   57  noun
+RUSTY 204 adjective
+SHINY 205 adjective
+; SP16 Task 4. XEXIT gates the EXIT 1 check (102) behind a TYPED verb so
+; it never fires on the automated leg - EXIT 1 restarts the whole game,
+; which would relaunch the suite from PRO 0 forever.
+XEXIT 105 verb
+; Article-stripping checks (109-110). Nouns 58-60 are new and collide
+; with nothing above - deliberately NOT SWORD/ROBE, so objects 10-12
+; cannot perturb the D1 partial-match resolution checks 87-96.
+KEYS  58  noun
+ANVIL 59  noun
+ROPE  60  noun
+GATE  61  noun
+/STX
+/0  "It's too dark to see anything."
+/1  "I can also see:"
+/2  "What now?"
+/3  "What next?"
+/4  "What should I do now?"
+/5  "What should I do next?"
+/6  "I didn't understand."
+/7  "I can't go in that direction."
+/8  "I can't do that."
+/9  "I have with me:"
+/10 "I am wearing:"
+/11 " "
+/12 "Are you sure?"
+/13 "Another go?"
+/14 " "
+/15 "OK."
+/16 "Press any key."
+/17 " "
+/18 " "
+/19 " "
+/20 " "
+/21 " "
+/22 " "
+/23 "I'm not wearing one of those."
+/24 "I can't. My hands are full."
+/25 "I already have the _."
+/26 "There isn't one of those here."
+/27 "I can't carry any more things."
+/28 "I don't have one of those."
+/29 "I'm already wearing the _."
+/30 "Y"
+/31 "N"
+/32 "More..."
+/33 ">"
+/34 " "
+/35 " "
+/36 "I now have the _."
+/37 "I'm now wearing the _."
+/38 "I've removed the _."
+/39 "I've dropped the _."
+/40 "I can't wear the _."
+/41 "I can't remove the _."
+/42 "I can't remove the _. My hands are full."
+/43 "The _ weighs too much for me."
+/44 "The _ is in the"
+/45 "The _ isn't in the"
+/46 ", "
+/47 " and "
+/48 ".#n"
+/49 "I don't have the _."
+/50 "I'm not wearing the _."
+/51 "."
+/52 "There isn't one of those in the"
+/53 "Nothing."
+/54 " "
+/55 " "
+/56 " "
+/57 "I/O Error"
+/58 " "
+/59 "File name error."
+/60 "Type in name of file."
+/MTX
+/0 "NEXTDAAD CONDACT SUITE#n"
+/OTX
+/0 "a brass lamp"
+/1 "an old box"
+/2 "a gold coin"
+/3 "a felt hat"
+; SP16 Task 3 objects (see /OBJ). Named so a substitution or a
+; container name in checks 87-96 has something to print.
+/4 "a rusty sword"
+/5 "a shiny sword"
+/6 "a small robe"
+/7 "a robe"
+/8 "a cloth bag"
+/9 "a green gem"
+; Article-stripping objects (checks 109-110, owner ruling 2026-08-05).
+; Each text is chosen for what it does to the article matcher:
+;   10 "some silver keys" - the "some " case (nothing else in this
+;      fixture starts with an article other than "a "/"an ").
+;   11 "rusty anvil"      - a first word that is NOT an article, which
+;      must SURVIVE substitution. This is the owner's "rusty sword"
+;      case; the noun is ANVIL rather than SWORD only so it cannot
+;      reach checks 87-96.
+;   12 "somersault rope"  - matches "some" for four characters and then
+;      diverges on the fifth, where the space should be. The deepest
+;      case the no-peek matcher has to unwind, and the one a
+;      buffer-and-replay implementation gets wrong (it prints "rope",
+;      or "somersault rope" out of order). "some" and "the" share one
+;      pattern walker in the interpreter, so this covers the "theatre"
+;      shape on the "the" arm too - one fixture, both arms.
+;   13 "the iron gate"    - the "the " case (owner ruling 2026-08-05 on
+;      a 323-text corpus survey: 27 object texts start with "the", 19
+;      of them in MYST_EN). TWO words survive the strip on purpose - a
+;      matcher that ate one word too many would print "gate" and a
+;      one-word expectation could not tell that apart.
+/10 "some silver keys"
+/11 "rusty anvil"
+/12 "somersault rope"
+/13 "the iron gate"
+/LTX
+/0 "Suite arena."
+/1 ""
+/CON
+/0
+NORTH 0
+/1
+/OBJ
+; Columns: number, starts at, weight, then c(ontainer) w(earable),
+; then the 16 extended attribute columns, then noun/adjective. The
+; DAAD template's own column ruler for those 16 reads
+;     5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0
+; i.e. attribute 15 LEFTMOST down to attribute 0 RIGHTMOST, across
+; the whole word (NOT per-byte). Verified against DRC 0.40/0.35
+; output, which is what SP16 check 47 pins:
+;     last column Y  -> extra-attribute bytes 01 00 (attribute 0)
+;     8th column Y   -> extra-attribute bytes 00 01 (attribute 8)
+; The DDB word is LITTLE ENDIAN (drb.php generateObjectExtraAttr),
+; so the first byte is attributes 0-7 and belongs in flag 59 (40 for
+; the second referenced object), the second is 8-15 and belongs in
+; flag 58 (39). Lamp carries attribute 0 and box/coin attribute 8 so
+; that check 47 can tell the two apart in both directions.
+/0    CARRIED     1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Y   LAMP _
+/1    0           2   Y _  _ _ _ _ _ _ _ Y _ _ _ _ _ _ _ _   BOX  _
+/2    NOT_CREATED 1   _ _  _ _ _ _ _ _ _ Y _ _ _ _ _ _ _ _   COIN _
+/3    0           1   _ Y  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   HAT  _
+; SP16 Task 3 (checks 87-96). All six start NOT_CREATED on purpose, so
+; no earlier check can see them: the DOALL-over-location-0 counters
+; (34, 49, 86) and the LISTAT of location 0 (36) skip them, and none of
+; them sits on a location number that WEIGH 1 (check 27) would read as
+; "inside object 1". They are CREATEd by the checks that need them.
+; 4/5 share a noun and BOTH carry an adjective - the D1 partial-match
+; case. 6/7 share a noun with the ADJECTIVED one first, so a resolver
+; that returns the first partial instead of holding out for the full
+; match picks the wrong one. 8 is the zero-weight "magic bag" (B29)
+; and 9 is what goes inside it.
+/4    NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   SWORD RUSTY
+/5    NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   SWORD SHINY
+/6    NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   ROBE  SMALL
+/7    NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   ROBE  _
+/8    NOT_CREATED 0   Y _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   BAG   _
+/9    NOT_CREATED 5   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   GEM   _
+; Article-stripping objects (checks 109-110). NOT_CREATED like 4-9, so
+; no earlier check can see them; 109/110 place them themselves.
+/10   NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   KEYS  _
+/11   NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   ANVIL _
+/12   NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   ROPE  _
+/13   NOT_CREATED 1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   GATE  _
+/PRO 0
+> _ _   CLS
+        MESSAGE 0
+        PROCESS 1
+> _ _   PARSE 0
+/PRO 1
+; ---- suite 0: pilot flags ----
+> _ _   LET 100 5
+        EQ 100 5
+        MES "01 OK#n"
+        SKIP 1
+> _ _   MES "01 F#n"
+> _ _   PLUS 100 250
+        EQ 100 255
+        MES "02 OK#n"
+        SKIP 1
+> _ _   MES "02 F#n"
+> _ _   MINUS 100 255
+        ZERO 100
+        MES "03 OK#n"
+        SKIP 1
+> _ _   MES "03 F#n"
+; 04 INVERTED 2026-08-04 (owner ruling). This check used to read
+; "NOTZERO 37" and pin the pre-initialisation of flag 37 to 4 and flag
+; 52 to 10 at eng_init_game. Neither reference does that - msx2daad
+; memsets every flag to zero and writes fMaxCarr/fStrength only in
+; do_ABILITY, and jDAAD's resetFlags has no exceptions either - so the
+; pre-init was removed and this check now pins its ABSENCE.
+;
+; It must stay HERE, at the top of the table: the suite's own first
+; ABILITY is check 33 (line ~271 below) and several later checks LET 37
+; and 52 directly, so anything further down would read those instead.
+; Safe against a re-run because it cannot happen - PRO 1's last entry
+; chains PRO 5..14 into the E03 process-stack overflow, and err_raise
+; is terminal (src/errors.asm "both funnels are terminal and never
+; return"), so this table executes exactly once per session. Checks
+; 01-03 above touch flag 100 only.
+;
+; The screen label carries its meaning because "04 OK" alone would now
+; mean the opposite of what it meant before; it keeps "04 OK" as its
+; leading token so the eye-scan and the 114-line count are unchanged.
+> _ _   ZERO 37
+        ZERO 52
+        MES "04 OK 37/52 ZERO#n"
+        SKIP 1
+> _ _   MES "04 F#n"
+; ---- suite 1: comparisons, indirection, decimal ----
+> _ _   LET 101 7
+        GT 101 6
+        LT 101 8
+        NOTEQ 101 9
+        MES "05 OK#n"
+        SKIP 1
+> _ _   MES "05 F#n"
+> _ _   LET 102 7
+        SAME 101 102
+        MES "06 OK#n"
+        SKIP 1
+> _ _   MES "06 F#n"
+> _ _   LET 103 101
+        LET @103 42
+        EQ 101 42
+        MES "07 OK#n"
+        SKIP 1
+> _ _   MES "07 F#n"
+> _ _   SET 104
+        EQ 104 255
+        CLEAR 104
+        ZERO 104
+        MES "08 OK#n"
+        SKIP 1
+> _ _   MES "08 F#n"
+> _ _   LET 105 200
+        LET 106 100
+        ADD 105 106
+        EQ 106 255
+        BIGGER 106 105
+        SMALLER 105 106
+        MES "09 OK#n"
+        SKIP 1
+> _ _   MES "09 F#n"
+> _ _   RANDOM 107
+        NOTZERO 107
+        MES "10 OK#n"
+        SKIP 1
+> _ _   MES "10 F#n"
+> _ _   LET 108 123
+        MES "11 PRINT:"
+        PRINT 108
+        NEWLINE
+        MES "11 OK#n"
+        SKIP 1
+> _ _   MES "11 F#n"
+; ---- suite 2: object model ----
+> _ _   CARRIED 0
+        ISAT 1 0
+        ABSENT 2
+        MES "12 OK#n"
+        SKIP 1
+> _ _   MES "12 F#n"
+> _ _   CREATE 2
+        ISAT 2 255
+        PRESENT 2
+        MES "13 OK#n"
+        SKIP 1
+> _ _   MES "13 F#n"
+> _ _   SWAP 0 2
+        ISAT 0 0
+        CARRIED 2
+        EQ 1 1
+        MES "14 OK#n"
+        SKIP 1
+> _ _   MES "14 F#n"
+> _ _   SETCO 0
+        EQ 51 0
+        EQ 54 0
+        EQ 55 1
+        MES "15 OK#n"
+        SKIP 1
+> _ _   MES "15 F#n"
+> _ _   COPYOF 2 110
+        EQ 110 254
+        LET 111 0
+        COPYFO 111 2
+        ISAT 2 0
+        EQ 1 0
+        MES "16 OK#n"
+        SKIP 1
+> _ _   MES "16 F#n"
+> _ _   LET 34 51
+        LET 35 255
+        WHATO
+        EQ 51 0
+        MES "17 OK#n"
+        SKIP 1
+> _ _   MES "17 F#n"
+> _ _   DESTROY 2
+        ABSENT 2
+        MES "18 OK#n"
+        SKIP 1
+> _ _   MES "18 F#n"
+; ---- suite 3: carry mechanics ----
+> _ _   ABILITY 2 10
+        PLACE 0 0
+        PLACE 2 0
+        GET 0
+        CARRIED 0
+        EQ 1 1
+        MES "19 OK#n"
+        SKIP 1
+> _ _   MES "19 F#n"
+> _ _   GET 2
+        CARRIED 2
+        EQ 1 2
+        MES "20 OK#n"
+        SKIP 1
+> _ _   MES "20 F#n"
+> _ _   PROCESS 2
+        NOTCARR 3
+        EQ 1 2
+        MES "21 OK#n"
+        SKIP 1
+> _ _   MES "21 F#n"
+> _ _   DROP 0
+        ISAT 0 0
+        EQ 1 1
+        MES "22 OK#n"
+        SKIP 1
+> _ _   MES "22 F#n"
+> _ _   PLACE 3 254
+        WEAR 3
+        WORN 3
+        EQ 1 1
+        MES "23 OK#n"
+        SKIP 1
+> _ _   MES "23 F#n"
+> _ _   REMOVE 3
+        CARRIED 3
+        MES "24 OK#n"
+        SKIP 1
+> _ _   MES "24 F#n"
+> _ _   LET 34 53
+        LET 35 255
+        AUTOD
+        ISAT 3 0
+        MES "25 OK#n"
+        SKIP 1
+> _ _   MES "25 F#n"
+> _ _   PUTIN 2 1
+        ISAT 2 1
+        EQ 1 0        ; the coin was the only carried object
+        MES "26 OK#n"
+        SKIP 1
+> _ _   MES "26 F#n"
+> _ _   WEIGH 1 112
+        EQ 112 3
+        MES "27 OK#n"
+        SKIP 1
+> _ _   MES "27 F#n"
+> _ _   TAKEOUT 2 1
+        CARRIED 2
+        MES "28 OK#n"
+        SKIP 1
+> _ _   MES "28 F#n"
+> _ _   DROPALL
+        ZERO 1
+        ISAT 2 0
+        MES "29 OK#n"
+        SKIP 1
+> _ _   MES "29 F#n"
+> _ _   RESET
+        CARRIED 0
+        ISAT 1 0
+        ABSENT 2
+        EQ 1 1
+        MES "30 OK#n"
+        SKIP 1
+> _ _   MES "30 F#n"
+; ---- AUTO-family coverage (IDs A1-A5; keeps 31+ free for suite 4).
+> _ _   LET 34 53               ; Noun1 = HAT
+        LET 35 255
+        AUTOG                   ; hat is here - taken
+        CARRIED 3
+        EQ 1 2
+        MES "A1 OK#n"
+        SKIP 1
+> _ _   MES "A1 F#n"
+> _ _   AUTOW                   ; carried hat - worn
+        WORN 3
+        EQ 1 1
+        MES "A2 OK#n"
+        SKIP 1
+> _ _   MES "A2 F#n"
+> _ _   AUTOR                   ; worn hat - removed to carried
+        CARRIED 3
+        EQ 1 2
+        MES "A3 OK#n"
+        SKIP 1
+> _ _   MES "A3 F#n"
+> _ _   AUTOP 1                 ; carried hat into the box
+        ISAT 3 1
+        EQ 1 1
+        MES "A4 OK#n"
+        SKIP 1
+> _ _   MES "A4 F#n"
+> _ _   AUTOT 1                 ; hat out of the box
+        CARRIED 3
+        EQ 1 2
+        MES "A5 OK#n"
+        SKIP 1
+> _ _   MES "A5 F#n"
+; ---- suite 4: control flow ----
+> _ _   PROCESS 3
+        ISDONE
+        MES "31 OK#n"
+        SKIP 1
+> _ _   MES "31 F#n"
+> _ _   PROCESS 4
+        ISNDONE
+        MES "32 OK#n"
+        SKIP 1
+> _ _   MES "32 F#n"
+> _ _   SKIP 1
+> _ _   MES "33 F#n"
+        SKIP 1
+> _ _   MES "33 OK#n"
+> _ _   PLACE 0 0
+        PLACE 1 0
+        PLACE 3 0
+        LET 113 0
+        PROCESS 15
+        EQ 113 3
+        MES "34 OK#n"
+        SKIP 1
+> _ _   MES "34 F#n"
+; ---- suite 5: printing, lists, windows ----
+> _ _   RESET
+        SETCO 0
+        MES "35:"
+        MES "_"
+        NEWLINE
+        MES "35 OK#n"
+        SKIP 1
+> _ _   MES "35 F#n"
+> _ _   LET 121 0
+        MES "36:"
+        LISTAT @121
+        MES "36 OK#n"
+        SKIP 1
+> _ _   MES "36 F#n"
+> _ _   PAPER 2
+        INK 6
+        MES "37 COLOUR#n"
+        PAPER 0
+        INK 7
+        MES "37 OK#n"
+        SKIP 1
+> _ _   MES "37 F#n"
+> _ _   SAVEAT
+        PRINTAT 20 40
+        MES "AT-20-40"
+        BACKAT
+        NEWLINE
+        MES "38 OK#n"
+        SKIP 1
+> _ _   MES "38 F#n"
+; ---- suite 6: movement, synonym, stubs ----
+> _ _   LET 33 2
+        LET 121 0
+        MOVE 121
+        EQ 121 0
+        MES "39 OK#n"
+        SKIP 1
+> _ _   MES "39 F#n"
+> _ _   LET 33 3
+        LET 122 0
+        MOVE 122
+        MES "40 F#n"
+        SKIP 1
+> _ _   MES "40 OK#n"
+> _ _   SYNONYM GET LAMP        ; GET=verb 100, LAMP=noun 51
+        EQ 33 100
+        EQ 34 51
+        MES "41 OK#n"
+        SKIP 1
+> _ _   MES "41 F#n"
+> _ _   GOTO 0
+        AT 0
+        MES "42 OK#n"
+        SKIP 1
+> _ _   MES "42 F#n"
+> _ _   BEEP 10 60
+        MES "43 OK#n"
+        SKIP 1
+> _ _   MES "43 F#n"
+; 44 EXTERN dispatch to an unimplemented vector is a safe no-op and
+; the entry continues normally. fn 3 is XMESSAGE's reserved
+; 3-parameter encoding (EXTERN offset_lsb 3 offset_msb) - the engine's
+; stream walker (engine.asm) now unconditionally eats a third byte
+; whenever curCondact is EXTERN and the compiled arg2 is 3, regardless
+; of whether that 3 came from a real XMESSAGE (which DRC always pairs
+; with a genuine third byte) or a bare hand-written EXTERN x 3 (which
+; DRC compiles as a plain 2-argument EXTERN, no third byte to eat) -
+; bare fn 3 is author error, not a supported classic-EXTERN form (see
+; ext_xmes's header comment / MALUVA doc: "EXTERN 0 3 (with setup)").
+; This check used fn 3 before ext_xmes/the stream walker existed, then
+; fn 4 once ext_xmes/the stream walker existed but XPART did not. SP11
+; Task 3 made vector 4 live (h_xpart) - EXTERN 5 4 would now attempt a
+; real part switch to part 5 instead of hitting a stub, so this check
+; moved to fn 5, still ext_stub (extVec, overlay0.asm), to keep testing
+; its original, still-relevant intent: a bare EXTERN to an unimplemented
+; vector compiles and no-ops. The two-part switch itself is exercised by
+; NDPARTA.DSF/NDPARTB.DSF via -Part, not this suite.
+> _ _   EXTERN 5 5
+        MES "44 OK#n"
+        SKIP 1
+> _ _   MES "44 F#n"
+; ---- final-review fix wave (checks 45-50) ----
+; 45 REDO: sub-process PRO 16 self-restarts once, guarded by flag 113.
+; Pins that REDO stores a coherent entry pointer (finding 1): the entry
+; runs exactly twice, so counter 113 ends at 2.
+> _ _   LET 113 0
+        PROCESS 16
+        EQ 113 2
+        MES "45 OK#n"
+        SKIP 1
+> _ _   MES "45 F#n"
+; 46 HASAT special values: pins the descending flag map (finding 3).
+; WEARABLE 23 -> flag 57 bit 7, CONTAINER 31 -> flag 56 bit 7.
+> _ _   SETCO 3                 ; hat: wearable, not container
+        HASAT 23
+        HASNAT 31
+        SETCO 1                 ; box: container, not wearable
+        HASAT 31
+        HASNAT 23
+        MES "46 OK#n"
+        SKIP 1
+> _ _   MES "46 F#n"
+; 47 HASAT/HASNAT extended-attribute byte order (SP16 A5,
+; docs\daad-compliance-report.md section 2 + Appendix A probe 4).
+; HASAT n reads flags[59 - (n>>3)] bit (n&7), so attributes 0-7 must
+; land in flag 59 and 8-15 in flag 58; the DDB stores the pair as one
+; LITTLE-ENDIAN word, so flag 59 takes the FIRST file byte. The lamp
+; carries attribute 0 alone (bytes 01 00) and the coin attribute 8
+; alone (bytes 00 01) - see the /OBJ column note above - so this
+; check disambiguates the two directions: an interpreter with the
+; bytes crossed passes NEITHER half.
+; HISTORY: this check used to assert HASAT 0 on the coin, under a
+; comment claiming the 16 /OBJ columns were per-byte MSB-first (attr
+; 0 = 8th column). That reading of the column order was wrong - the
+; coin's 8th-column Y is attribute 8 - and the check passed only
+; because the interpreter's byte order was crossed the same way. Both
+; are fixed together; do not "restore" either half alone.
+> _ _   SETCO 0                 ; lamp: attribute 0 only
+        HASAT 0
+        HASNAT 1
+        HASNAT 8
+        SETCO 2                 ; coin: attribute 8 only
+        HASAT 8
+        HASNAT 9
+        HASNAT 0
+        MES "47 OK#n"
+        SKIP 1
+> _ _   MES "47 F#n"
+; 48 PLACE 255 -> HERE (finding 7): coin placed at 255 must land at the
+; player's location (flag 38), not raise error 2.
+> _ _   RESET
+        GOTO 0
+        PLACE 2 255
+        COPYOF 2 114
+        SAME 114 38
+        ISAT 2 0
+        MES "48 OK#n"
+        SKIP 1
+> _ _   MES "48 F#n"
+; 49 GET capacity refusal cancels DOALL (finding 5): with MAXCARR 0,
+; every GET refuses SM27. DOALL over loc 0 (box + hat) must stop after
+; the first refusal, so counter 115 stays at 1 (without the fix it
+; iterates every object).
+> _ _   RESET
+        LET 37 0                ; MAXCARR = 0 -> hands always full
+        LET 44 255              ; Noun2/Adj2 clear of any object
+        LET 45 255
+        LET 115 0
+        GOTO 0
+        PROCESS 17
+        EQ 115 1
+        MES "49 OK#n"
+        SKIP 1
+> _ _   MES "49 F#n"
+; 50 QUIT (owner-interactive): SM12 prompt. Press Y -> "50 OK";
+; press N (or any non-Y) -> "50 F" then continues. Kept last.
+> _ _   QUIT
+        MES "50 OK#n"
+        SKIP 1
+> _ _   MES "50 F#n"
+; ---- interactive parser checks (owner types at each prompt) ----
+; DAAD PARSE semantics: a VALID sentence makes PARSE fail as a
+; condition (aborting the entry - the remainder of a PARSE entry is
+; the game's invalid-input/timeout path) and marks done; unparseable
+; input or a timeout makes PARSE pass. Assertions therefore live in
+; the entry AFTER each PARSE.
+; 51 basic verb+noun
+> _ _   MES "51 TYPE: get lamp#n"
+        PARSE 0
+        MES "51 F#n"
+        SKIP 2
+> _ _   EQ 33 100
+        EQ 34 51
+        EQ 35 255
+        MES "51 OK#n"
+        SKIP 1
+> _ _   MES "51 F#n"
+; 52 adjective + compound second order parses independently
+> _ _   MES "52 TYPE: get small lamp and drop hat#n"
+        PARSE 0
+        MES "52A F#n"
+        SKIP 2
+> _ _   EQ 33 100
+        EQ 34 51
+        EQ 35 202
+        MES "52A OK#n"
+        SKIP 1
+> _ _   MES "52A F#n"
+> _ _   PARSE 0
+        MES "52B F#n"
+        SKIP 2
+> _ _   EQ 33 101
+        EQ 34 53
+        MES "52B OK#n"
+        SKIP 1
+> _ _   MES "52B F#n"
+; 53 compound implicit verb (previousVerb)
+> _ _   MES "53 TYPE: get lamp and hat#n"
+        PARSE 0
+        MES "53 F#n"
+        SKIP 3
+> _ _   PARSE 0
+        MES "53 F#n"
+        SKIP 2
+> _ _   EQ 33 100
+        EQ 34 53
+        MES "53 OK#n"
+        SKIP 1
+> _ _   MES "53 F#n"
+; 54 pronoun: LAMP (id 51 >= 50) remembered, IT substitutes
+> _ _   MES "54 TYPE: examine lamp#n"
+        PARSE 0
+        MES "54 F#n"
+        SKIP 3
+> _ _   MES "54 TYPE: get it#n"
+        PARSE 0
+        MES "54 F#n"
+        SKIP 2
+> _ _   EQ 33 100
+        EQ 34 51
+        MES "54 OK#n"
+        SKIP 1
+> _ _   MES "54 F#n"
+; 55 noun-as-verb (NORTH noun id 2 < 20)
+> _ _   MES "55 TYPE: north#n"
+        PARSE 0
+        MES "55 F#n"
+        SKIP 2
+> _ _   EQ 33 2
+        MES "55 OK#n"
+        SKIP 1
+> _ _   MES "55 F#n"
+; 56 unknown word skipped
+> _ _   MES "56 TYPE: get xyzzy lamp#n"
+        PARSE 0
+        MES "56 F#n"
+        SKIP 2
+> _ _   EQ 33 100
+        EQ 34 51
+        MES "56 OK#n"
+        SKIP 1
+> _ _   MES "56 F#n"
+; 57 noun2 + preposition + object-2 resolution (box = object 1,
+; container, at location 0; BOX noun id 50). Flags 39/40 are the
+; SECOND referenced object's extended attribute pair and are the
+; third A5 site (obj2_resolve, overlay1.asm) - the only one HASAT
+; cannot reach, since HASAT always reads the 58/59 pair. The box
+; carries attribute 8 alone (bytes 00 01), so flag 39 (attrs 8-15)
+; must read 1 and flag 40 (attrs 0-7) must read 0; crossed bytes
+; give exactly the opposite pair.
+> _ _   MES "57 TYPE: get lamp in box#n"
+        GOTO 0
+        PARSE 0
+        MES "57 F#n"
+        SKIP 2
+> _ _   EQ 43 203
+        EQ 44 50
+        EQ 25 1
+        EQ 26 128
+        EQ 27 0
+        EQ 39 1
+        EQ 40 0
+        MES "57 OK#n"
+        SKIP 1
+> _ _   MES "57 F#n"
+; 58 input timeout: PARSE passes on timeout, flag 49 = 128 exactly
+> _ _   MES "58 WAIT - DO NOT TYPE#n"
+        TIME 2 0
+        PARSE 0
+        EQ 49 128
+        TIME 0 0
+        MES "58 OK#n"
+        SKIP 1
+> _ _   MES "58 F#n"
+; 59 NEWTEXT discards the pending tail
+> _ _   MES "59 TYPE: get lamp and drop hat#n"
+        PARSE 0
+        MES "59 F#n"
+        SKIP 3
+> _ _   NEWTEXT
+        MES "59 TYPE: north#n"
+        PARSE 0
+        MES "59 F#n"
+        SKIP 2
+> _ _   EQ 33 2
+        MES "59 OK#n"
+        SKIP 1
+> _ _   MES "59 F#n"
+; 60 conjunctions neutralised beyond the first separator
+> _ _   MES "60 TYPE: get lamp, drop hat and get box#n"
+        PARSE 0
+        MES "60 F#n"
+        SKIP 4
+> _ _   PARSE 0
+        MES "60 F#n"
+        SKIP 3
+> _ _   EQ 33 101
+        EQ 34 53
+        PARSE 0
+        MES "60 F#n"
+        SKIP 2
+> _ _   EQ 33 100
+        EQ 34 50
+        MES "60 OK#n"
+        SKIP 1
+> _ _   MES "60 F#n"
+; ---- persistence checks ----
+; A6 RAMLOAD with nothing saved: no-op
+> _ _   LET 120 7
+        RAMLOAD 200
+        EQ 120 7
+        MES "A6 OK#n"
+        SKIP 1
+> _ _   MES "A6 F#n"
+; 61 RAMSAVE/RAMLOAD partial restore (inclusive bound)
+> _ _   LET 116 11
+        LET 117 22
+        PLACE 2 1               ; coin into the box
+        RAMSAVE
+        LET 116 99
+        LET 117 88
+        PLACE 2 0
+        RAMLOAD 116
+        EQ 116 11               ; flag 116 <= bound: restored
+        EQ 117 88               ; flag 117 above bound: preserved
+        ISAT 2 1                ; object location restored
+        MES "61 OK#n"
+        SKIP 1
+> _ _   MES "61 F#n"
+; 62 SAVE then LOAD round-trip (owner types the same name twice)
+> _ _   MES "62 TYPE NAME: t1#n"
+        LET 118 77
+        SAVE 0
+        LET 118 5
+        MES "62 TYPE NAME: t1#n"
+        LOAD 0
+        EQ 118 77
+        MES "62 OK#n"
+        SKIP 1
+> _ _   MES "62 F#n"
+; 63 LOAD of a missing file: SM57, entry aborts (LOAD is condition-
+; typed), state untouched, session continues. sav_read is atomic
+; (staged commit), so EVERY load failure behaves this way - there is
+; no destructive path.
+> _ _   LET 119 42
+        MES "63 TYPE NAME: nofile#n"
+        LOAD 0
+        MES "63 F#n"
+        SKIP 2
+> _ _   EQ 119 42
+        MES "63 OK#n"
+        SKIP 1
+> _ _   MES "63 F#n"
+; ---- graphics checks ----
+; 64 PICTURE with no image file on SD: fails as a condition, entry
+; aborts, session continues. ASSUMES the suite SD state has no 200.*
+; art - the Rabenstein set staged by build-tests.ps1 -Rab covers
+; 000-020 only, and nothing else stages picture files (confirmed at
+; build time: sd\ holds no 200.*). The loader probes the whole
+; extension chain (NX2.ZX0/N2Z/NX2/NXI.ZX0/NXZ/NXI), every probe
+; misses, gfx_load fails clean and h_picture reports false.
+> _ _   PICTURE 200
+        MES "64 F#n"
+        SKIP 1
+> _ _   MES "64 OK#n"
+; ---- audio checks ----
+; Audio QUALITY is owner-ear (CSpect + real hardware legs); these
+; assert safe completion only.
+; 65 BEEP: a valid note returns after blocking ~0.1s; an odd tone
+; and a zero duration are silent no-ops that still complete.
+; SP16 A3/A4 - DRC WRITES BEEP AS "BEEP duration tone" AND THEN SWAPS
+; THE TWO FOR EVERY ZX TARGET (drb.php:900-914), so "BEEP 10 60"
+; below reaches h_beep as arg1 = tone 60, arg2 = duration 6 (10
+; centiseconds scaled by the target's 120/200 factor). The source
+; order here is therefore unchanged, but its MEANING at the handler
+; is the reverse of what it used to be read as - before A3 this
+; whole check was a silent no-op, because h_beep read tone 60 as a
+; duration and duration 6 as a tone and rejected 6 as out of range.
+; DRC also rewrites any BEEP whose source tone falls outside 48..238
+; into a PAUSE before the swap, so 48 and 238 are the extremes a
+; database can actually carry - 238 is the A4 ceiling raise (was 222)
+; and exercises aud_periods.inc entries 100-107 for the first time.
+; Audio QUALITY is the owner ear leg; this asserts completion only.
+> _ _   BEEP 10 60
+        BEEP 10 61
+        BEEP 0 60
+        BEEP 10 48
+        BEEP 10 238
+        MES "65 OK#n"
+; 66 SFX: missing song no-ops (the suite SD carries no 200.AKY),
+; play-effect with no effects bank no-ops (the suite SD carries no
+; GAME.SFB either - the bank guard must swallow it, not play garbage),
+; unknown sub-command no-ops, stop-music with nothing playing no-ops.
+> _ _   SFX 200 6
+        SFX 1 1
+        SFX 1 99
+        SFX 200 8
+        MES "66 OK#n"
+; 67 SFX 3/4 as 1/2, stream intact: subs 3 and 4 probe NNN.WAV first
+; exactly like subs 1/2 (DRC's DRF 0.40 cannot emit a DOS-source rate
+; byte at plan-time - the pass-through keeps 3/4 usable at runtime).
+; No 200.WAV and no GAME.SFB in suite staging, so both fall through
+; the sample probe AND the AY effect fallback and land as silent
+; no-ops. Witness flag proves the condacts after them still ran.
+> _ _   LET 123 91
+        SFX 200 3
+        SFX 200 4
+        EQ 123 91
+        MES "67 OK#n"
+        SKIP 1
+> _ _   MES "67 F#n"
+; 68 SFX 0 5: stop-both-kinds with nothing playing - idle no-op,
+; session continues.
+> _ _   LET 123 92
+        SFX 0 5
+        EQ 123 92
+        MES "68 OK#n"
+        SKIP 1
+> _ _   MES "68 F#n"
+; 69 SFX 99 1: 099.WAV is the malformed fixture (16 bytes, no RIFF
+; header) staged by build-tests.ps1 -Suite. aud_load_wav's RIFF probe
+; rejects it (CF set), h_sfx falls through to the AY effect path -
+; also a no-op, the suite SD carries no GAME.SFB. Silent end to end.
+> _ _   LET 123 93
+        SFX 99 1
+        EQ 123 93
+        MES "69 OK#n"
+        SKIP 1
+> _ _   MES "69 F#n"
+; 70 SFX 98 1: 098.WAV is the truncated-WAV fixture (valid 44-byte
+; RIFF+fmt+data header, no payload bytes) staged by build-tests.ps1
+; -Suite. aud_load_wav's RIFF/fmt probes pass, but the streaming read
+; comes up short against the promised data size and rejects (CF set) -
+; h_sfx falls through to the AY effect path, also a no-op (no
+; GAME.SFB). Silent end to end.
+> _ _   LET 123 94
+        SFX 98 1
+        EQ 123 94
+        MES "70 OK#n"
+        SKIP 1
+> _ _   MES "70 F#n"
+; 71 XUNDONE (EXTERN 0 7): PRO 18's entry prints a witness message then
+; runs EXTERN 0 7 and falls through its terminator (no DONE/NOTDONE) -
+; the MES action stamps isDone=1 pre-dispatch, XUNDONE's ext_undone then
+; clears it back to 0. The table then runs out (single-entry process)
+; and the pop leaves isDone exactly as PRO 18 left it, which is what
+; the containment buys: ISNDONE here must pass. Also pins that the
+; new EXTERN fn-3 stream-consumption (curCondact 61, arg2 3) leaves the
+; plain 2-arg EXTERN 0 7 encoding alone (arg2 7 <> 3, no 3rd byte read).
+> _ _   PROCESS 18
+        ISNDONE
+        MES "71 OK#n"
+        SKIP 1
+> _ _   MES "71 F#n"
+; 72 XMESSAGE (EXTERN vector 3): the real meta-condact, so DRC emits
+; both the 3-parameter EXTERN (offset_lsb, 3, offset_msb) and the
+; 0.XMB entry (staged as sd\SUITE\0.XMB by build-tests.ps1 -Suite).
+; ext_xmes claims the XMES pool bank, seeks/reads 0.XMB and prints
+; through the standard DDB text machinery (rd_seek_page). EXTERN is
+; action-typed, so the engine never gates entry continuation on its
+; result - the witness EQ right after XMESSAGE is what actually
+; proves the 3-byte stream discipline held (flag 123 survives the
+; dispatch intact); the printed text itself is the owner eye-leg's
+; evidence, not asserted here.
+> _ _   LET 123 95
+        XMESSAGE "72 external text"
+        EQ 123 95
+        MES "72 OK#n"
+        SKIP 1
+> _ _   MES "72 F#n"
+; 73 GFX: the brief-pinned safe-sub witness - clear front (5), swap
+; front/back (2), unknown sub (99) - buffer/register ops only, no
+; picture ever staged/displayed in this suite (check 64's PICTURE 200
+; fails clean), so l2Mode/l2FrontBank/l2BackBank sit at cold-boot
+; defaults throughout. Safe subs only, no assertion on pixels - visual
+; proof is the owner eye-leg (PICTURE, then GFX 1/5/0) in the task
+; report, not here. Witness flag proves the condacts after them still
+; ran.
+> _ _   LET 123 96
+        GFX 0 5
+        GFX 0 2
+        GFX 0 99
+        EQ 123 96
+        MES "73 OK#n"
+        SKIP 1
+> _ _   MES "73 F#n"
+; 74 GFX: smoke coverage for the new copy loop and the remaining
+; implemented subs - front<->back copy (1 then 0, net no lasting
+; surface-role change), clear back (6), numbered-palette no-op (9).
+; Same no-pixel-assertion rule as check 73.
+> _ _   LET 123 97
+        GFX 0 1
+        GFX 0 0
+        GFX 0 6
+        GFX 0 9
+        EQ 123 97
+        MES "74 OK#n"
+        SKIP 1
+> _ _   MES "74 F#n"
+; ---- streamed-song checks (SP10 client 2: AYS) ----
+; 75 SFX n 6 with no NNN.AYS and no NNN.AKY: the stream probe misses,
+; the AKY song probe misses, SFX no-ops and the entry continues. The
+; suite SD carries no 200.AYS/200.AKY, so both loaders fail clean.
+> _ _   LET 123 98
+        SFX 200 6
+        EQ 123 98
+        MES "75 OK#n"
+        SKIP 1
+> _ _   MES "75 F#n"
+; 76 SFX 2 7 loads + loops the staged 002.AYS stream (build-tests.ps1
+; -Suite stages it from tools\audio_assets). The PAUSE lets the ISR
+; consume the start request and tick the stream for real frames BEFORE
+; SFX 0 8 stops it - without the gap both mailbox bits would land in the
+; same frame and the fixed stop-before-start order would restart, not
+; stop. Headless-safe: assert only that the entry continues across the
+; sequence (witness flag survives) - playback is the owner ear leg.
+; Robust either way: if the stream fails to claim, SFX falls through to
+; the (absent) 002.AKY and still no-ops.
+> _ _   LET 123 99
+        SFX 2 7
+        PAUSE 10
+        SFX 0 8
+        EQ 123 99
+        MES "76 OK#n"
+        SKIP 1
+> _ _   MES "76 F#n"
+; ---- SP10 Task 5: MOUSE + CALL closure ----
+; 77 MOUSE 3 into scratch flags 130-133 (buttons, X/8, Y/8, X/6): the
+; suite's first (and only) MOUSE poll finds mouseBaseSet clear, so it
+; only latches the raw Kempston baseline and leaves the accumulated
+; position at its init value (mouseX=160, mouseY=128) - deterministic
+; no matter what headless CSpect's emulated ports return. That makes
+; this a positive control, not a witness-only smoke check: flags
+; 131-133 are asserted against mouseX/8=20, mouseY/8=16, mouseX/6=26,
+; so a stub that leaves the flags untouched fails this check. Flag
+; 130 (buttons) stays unasserted - the raw Kempston button port's
+; idle value under headless CSpect is not deterministic. Flags
+; 130-133 sit clear of every other flag this suite reads/writes
+; (witness 123, RANDOM's 107, PRINT's 108, the REDO counter's 113).
+; Visual pointer verification (MOUSE 1 show/track, MOUSE 2 hide) is
+; the owner eye leg, not here.
+> _ _   LET 123 100
+        MOUSE 130 3
+        EQ 131 20
+        EQ 132 16
+        EQ 133 26
+        EQ 123 100
+        MES "77 OK#n"
+        SKIP 1
+> _ _   MES "77 F#n"
+; 78 CALL: documented no-op (jdaad parity - jdaad.js's own _CALL() is
+; the same shape). Proves the entry continues through it exactly like
+; any other action condact.
+> _ _   LET 123 101
+        CALL 0 0
+        EQ 123 101
+        MES "78 OK#n"
+        SKIP 1
+> _ _   MES "78 F#n"
+; 79 XMESSAGE nonzero offset: SECOND XMESSAGE in this DSF - DRC
+; appends each XMESSAGE's bytes to 0.XMB in source order, so this
+; entry lands after check 72's "72 external text" and its terminator,
+; guaranteeing a nonzero byte offset (unlike check 72's own entry,
+; which happens to sit at offset 0 as the first XMESSAGE compiled).
+; Exercises ext_xmes's esx_fseek-to-nonzero-offset path rather than
+; just the trivial seek-to-0 path check 72 already covers. Witness
+; idiom as 72: EXTERN is action-typed, so the flag EQ right after
+; XMESSAGE is what actually proves the 3-byte stream discipline held
+; at a nonzero offset; the printed text itself is the owner eye-leg's
+; evidence, not asserted here.
+> _ _   LET 123 102
+        XMESSAGE "79 external text two"
+        EQ 123 102
+        MES "79 OK#n"
+        SKIP 1
+> _ _   MES "79 F#n"
+; 80 SAVE/LOAD with a dirty name: punctuation and lowercase must
+; survive sav_fname_sanitize's mapping (overlay1.asm) into a
+; filesystem-safe 8.3 name - lowercase -> uppercase, alphanumerics
+; pass, everything else -> 'X' (the DAAD manual only promises the
+; file name is "MADE acceptable" on 8-bit targets - DAAD_Manual_1991
+; .md - no algorithm given, so this is the pinned choice). Owner
+; types the SAME dirty name both times when prompted:
+;     my.sv!
+; sav_fname drops nothing here (no spaces) and uppercases the two
+; letters; sav_fname_sanitize then replaces '.' and '!' with 'X', so
+; both SAVE and LOAD resolve to the same MYXSVX.SAV - a plain A-Z0-9
+; 8.3 name - regardless of the raw punctuation typed. The round trip
+; below (118 corrupted between SAVE and LOAD, then asserted restored)
+; proves the SAME file was written and read back, i.e. LOAD sanitized
+; the retyped dirty name identically to SAVE. A pass is: no "File
+; name error." (SM59) or "I/O Error" (SM57) printed on either action,
+; and EQ 118 77 holds after LOAD.
+> _ _   MES "80 TYPE NAME: my.sv!#n"
+        LET 118 77
+        SAVE 0
+        LET 118 5
+        MES "80 TYPE NAME: my.sv!#n"
+        LOAD 0
+        EQ 118 77
+        MES "80 OK#n"
+        SKIP 1
+> _ _   MES "80 F#n"
+; ---- SP16 Task 1 appended checks (81-) ----
+; Appended deliberately: the differential parser harness
+; (tests\parser) indexes its findings by turn, and every turn it
+; replays lands in checks 50-60, so anything added after check 80 is
+; unreachable from the replay and leaves the baseline turn numbering
+; untouched.
+; 81 INKEY clears flag 61. DAAD's INKEY publishes the key code in
+; flag 60 (fKey1) and the IBM extended code in flag 61 (fKey2);
+; both references clear 61 whenever they write 60, and h_inkey used
+; to write 60 alone, leaving whatever was in 61 (compliance report
+; section 4, "Flag 61"). Both flags are pre-poisoned so a handler
+; that skipped either write fails this check.
+; The PAUSE lets a key still physically down from check 80's typed
+; file name release before INKEY samples the matrix - INKEY is a
+; condition and its result is deliberately NOT gated on here: the
+; assertions live in the NEXT entry, so they run whether INKEY found
+; a key (entry falls off its end) or not (entry aborts at INKEY).
+> _ _   PAUSE 50
+        LET 60 66
+        LET 61 55
+        INKEY
+> _ _   ZERO 60                 ; INKEY overwrote the poison (no key
+                                ; down at the sample -> 0)
+        ZERO 61                 ; and cleared fKey2 alongside it
+        MES "81 OK#n"
+        SKIP 1
+> _ _   MES "81 F#n"
+; ---- SP16 Task 2 appended checks (82-86) ----
+; Same placement rule as 81 above: after check 80, so the differential
+; harness's turn indexing is untouched. These pin the FLAG 1 arithmetic
+; of the object-interaction wave (GET/DROP/WEAR/REMOVE/PUTIN/TAKEOUT
+; all print system messages now, and all of them move the object AND
+; adjust flag 1 on the success path only). The messages themselves are
+; a text-channel matter and are evidenced by the harness, not here.
+; 82 GET/DROP round trip: flag 1 up on the way in, down on the way out.
+> _ _   RESET                   ; lamp carried, box + hat at loc 0
+        GOTO 0
+        ABILITY 10 100          ; room and strength for anything here
+        EQ 1 1
+        GET 3
+        CARRIED 3
+        EQ 1 2
+        DROP 3
+        ISAT 3 0
+        EQ 1 1
+        MES "82 OK#n"
+        SKIP 1
+> _ _   MES "82 F#n"
+; 83 WEAR decrements flag 1 (worn is not carried), REMOVE increments it
+; back. The hat must be CARRIED first - WEAR on an object lying at the
+; player's location now refuses SM49 instead of wearing it.
+> _ _   GET 3
+        EQ 1 2
+        WEAR 3
+        WORN 3
+        EQ 1 1
+        REMOVE 3
+        CARRIED 3
+        EQ 1 2
+        MES "83 OK#n"
+        SKIP 1
+> _ _   MES "83 F#n"
+; 84 PUTIN decrements flag 1, TAKEOUT increments it. Object 1 (the box)
+; is the container; TAKEOUT now runs a weight test too, so the strength
+; set in 82 has to still cover the hat.
+> _ _   PUTIN 3 1
+        ISAT 3 1
+        EQ 1 1
+        TAKEOUT 3 1
+        CARRIED 3
+        EQ 1 2
+        MES "84 OK#n"
+        SKIP 1
+> _ _   MES "84 F#n"
+; 85 a REFUSED GET changes nothing: flag 1 stands, the object stays put,
+; and the refusal's DONE aborts the rest of the entry. The refused GET
+; is CONTAINED in PRO 20 - the refusal's DONE pops a whole PROCESS, so
+; running it inline here would abort PRO 1 itself and take checks 86
+; and the SUITES DONE tail with it. Same containment pattern as checks
+; 49 and 86 (PRO 17 / PRO 19).
+> _ _   DROP 3
+        LET 37 0                ; hands always full -> SM27
+        LET 124 0
+        PROCESS 20
+> _ _   ABILITY 10 100
+        ZERO 124
+        EQ 1 1
+        ISAT 3 0
+        MES "85 OK#n"
+        SKIP 1
+> _ _   MES "85 F#n"
+; 86 weight is tested BEFORE the hands-full count (compliance report
+; section 3, GET). This is the one ordering difference the state
+; channel can see: SM43 (too heavy) does NOT cancel a DOALL, SM27
+; (hands full) does. Both conditions are made true at once - strength
+; 0 and capacity 0 - so a weight-first GET refuses SM43 per object and
+; the DOALL runs to exhaustion (both objects at loc 0 counted), while a
+; count-first GET refuses SM27 and cancels after the first.
+> _ _   RESET
+        GOTO 0
+        LET 37 0                ; capacity 0 - hands full
+        LET 52 0                ; strength 0 - everything too heavy
+        LET 44 255              ; Noun2/Adj2 clear of any object
+        LET 45 255
+        LET 125 0
+        PROCESS 19
+        EQ 125 2
+        MES "86 OK#n"
+        SKIP 1
+> _ _   MES "86 F#n"
+; ---- SP16 Task 3 appended checks (87-96) ----
+; Object resolution: D1 (noun-only matching), B17 (WHATO null
+; semantics), B11/B12 (SWAP/COPYOO referenced object and flag 1), B29
+; (zero-weight containers), B10 (AUTOT's search chain). Same placement
+; rule as 81-86 - appended after check 80, so the differential
+; harness's turn indexing is untouched. Objects 4-9 (see /OBJ) exist
+; only for these checks and are CREATEd here, never earlier.
+;
+; 87 D1: a bare noun against objects that all have adjectives.
+; Noun1 = SWORD, no adjective. Objects 4 (RUSTY) and 5 (SHINY) share
+; the noun and NEITHER is adjectiveless, so before D1 the matcher
+; rejected both and flag 51 came back 255 - "GET SWORD" could not
+; reach a rusty sword. jDAAD records object 4 as a PARTIAL match and,
+; finding no full match anywhere in the pass, returns it.
+> _ _   RESET
+        GOTO 0
+        ABILITY 10 100          ; check 86 left capacity and strength 0
+        CREATE 4
+        CREATE 5
+        SETCO 0                 ; poison flag 51 with a REAL object, so
+        LET 34 54               ; a handler that writes nothing fails
+        LET 35 255
+        WHATO
+        EQ 51 4
+        MES "87 OK#n"
+        SKIP 1
+> _ _   MES "87 F#n"
+; 88 the adjective still disambiguates. SHINY SWORD must take object 5
+; even though object 4 shares the noun and comes first in the table -
+; this is what a blanket "ignore the adjective when it matches nothing"
+; rule would break, and why jDAAD's partial model was copied instead.
+> _ _   LET 35 205              ; Adj1 = SHINY
+        WHATO
+        EQ 51 5
+        MES "88 OK#n"
+        SKIP 1
+> _ _   MES "88 F#n"
+; 89 full beats partial WITHIN one pass. Bare ROBE meets object 6
+; (SMALL ROBE) first and records it as a partial, then must override it
+; with object 7, which has no adjective and is therefore a full match.
+; Table order is deliberately partial-first, so a first-match-wins
+; resolver answers 6 and fails here.
+> _ _   CREATE 6
+        CREATE 7
+        LET 34 55               ; Noun1 = ROBE
+        LET 35 255
+        WHATO
+        EQ 51 7
+        MES "89 OK#n"
+        SKIP 1
+> _ _   MES "89 F#n"
+; 90 and because partial/full resolves inside ONE location pass, the
+; search chain's location priority still wins: with the SMALL ROBE
+; CARRIED and the adjectiveless ROBE merely lying here, the carried
+; pass returns its partial (6) and the here pass, which holds the full
+; match, is never reached. A resolver that scanned all locations first
+; and picked the best match globally would answer 7.
+> _ _   GET 6
+        CARRIED 6
+        LET 34 55
+        LET 35 255
+        WHATO
+        EQ 51 6
+        MES "90 OK#n"
+        SKIP 1
+> _ _   MES "90 F#n"
+; 91 B17: a WHATO that finds nothing is referencedObject(NULLWORD) -
+; flag 51 = 255 AND flags 54-59 ZEROED (msx2daad substitutes an
+; all-zero nullObject). All six are pre-poisoned, so the old handler,
+; which wrote 51 alone and left 54-59 holding the previous object's
+; data, fails this.
+> _ _   LET 54 11
+        LET 55 22
+        LET 56 33
+        LET 57 44
+        LET 58 55
+        LET 59 66
+        LET 34 2                ; Noun1 = NORTH - no object has it
+        LET 35 255
+        WHATO
+        EQ 51 255
+        ZERO 54
+        ZERO 55
+        ZERO 56
+        ZERO 57
+        ZERO 58
+        ZERO 59
+        MES "91 OK#n"
+        SKIP 1
+> _ _   MES "91 F#n"
+; 92 B11: SWAP of two CARRIED objects must leave flag 1 alone - the
+; manual says "Flag 1 is not adjusted" outright. The old two-obj_move
+; implementation decremented once per object with no matching
+; increment, so this landed on 0 instead of 2. SWAP must also set the
+; referenced object to objno 2, which it never did at all.
+> _ _   SETCO 0                 ; flag 51 = 0 so EQ 51 6 below is real
+        CARRIED 0               ; the lamp
+        CARRIED 6               ; the small robe, from check 90
+        EQ 1 2
+        SWAP 0 6
+        EQ 1 2
+        CARRIED 0
+        CARRIED 6
+        EQ 51 6
+        MES "92 OK#n"
+        SKIP 1
+> _ _   MES "92 F#n"
+; 93 the exchange itself still works after losing obj_move: a carried
+; object and one lying here trade places. Flag 1 stays 2 either way
+; here (one carried object leaves as another arrives) - it is the
+; locations and the referenced object this pins.
+> _ _   ISAT 7 0                ; the adjectiveless robe is lying here
+        SWAP 6 7
+        ISAT 6 0
+        CARRIED 7
+        EQ 1 2
+        EQ 51 7
+        MES "93 OK#n"
+        SKIP 1
+> _ _   MES "93 F#n"
+; 94 B12: COPYOO keeps its move - jDAAD routes COPYOO through PLACE,
+; which does adjust flag 1 - but must also set the referenced object to
+; objno 2, which the manual requires of COPYOO exactly as it does of
+; SWAP.
+> _ _   SETCO 0
+        COPYOO 6 7              ; robe 7 joins robe 6 at location 0
+        ISAT 7 0
+        EQ 1 1                  ; robe 7 stopped being carried
+        EQ 51 7
+        MES "94 OK#n"
+        SKIP 1
+> _ _   MES "94 F#n"
+; 95 B29, the manual's "magic bag": a container of ZERO own weight
+; transmits zero for its contents too, so the weight recursion must not
+; descend into it. Object 8 weighs 0 and is a container, object 9
+; weighs 5 and goes inside it. The positive control is check 27, where
+; the box (own weight 2) DOES add its contents.
+> _ _   CREATE 8
+        CREATE 9
+        LET 111 8
+        COPYFO 111 9            ; the gem's location = object 8, i.e.
+                                ; inside the bag. PUTIN 9 8 would be the
+                                ; natural way to say this, but DRF
+                                ; validates a PUTIN container parameter
+                                ; as a LOCATION number and there is no
+                                ; location 8 - COPYFO writes the same
+                                ; byte with no such check.
+        LET 112 99
+        WEIGH 8 112
+        ZERO 112
+        WEIGH 9 112
+        EQ 112 5                ; the gem on its own still weighs 5
+        MES "95 OK#n"
+        SKIP 1
+> _ _   MES "95 F#n"
+; 96 B10: AUTOT's fallback chain is container, carried, worn, here -
+; and then it STOPS. It used to end in obj_find_n1's anywhere pass,
+; which reached objects the player was nowhere near; TAKEOUT refused
+; them, but not before making them the referenced object. Object 4 is
+; parked inside object 3 while the player stays at location 0 and the
+; searched container is object 1, so an anywhere pass is the only thing
+; that can see it. Note object 5 (SHINY SWORD) IS here and shares the
+; noun - it is rejected on the adjective, which keeps the here pass
+; honest. Contained in PRO 21 because the AUTOT refusal performs DONE -
+; same reason as check 85's PRO 20.
+> _ _   SETCO 0
+        LET 111 3
+        COPYFO 111 4            ; object 4 -> inside object 3
+        LET 34 54               ; Noun1 = SWORD
+        LET 35 204              ; Adj1 = RUSTY - object 4 exactly
+        LET 126 0
+        PROCESS 21
+> _ _   EQ 51 0                 ; nothing was referenced
+        COPYOF 4 110
+        EQ 110 3                ; and nothing moved
+        ZERO 126
+        MES "96 OK#n"
+        SKIP 1
+> _ _   MES "96 F#n"
+; ---- SP16 Task 4 appended checks (97-102) ----
+; Same placement rule as 81 and 82-86 and 87-96: appended after check
+; 80, so the differential harness's turn indexing is untouched.
+; These pin the FLAG side of the listing and flow-control wave. The
+; listing FORM itself (continuous versus one-per-line) is a text-channel
+; property and is evidenced by the harness transcript, not here.
+;
+; Location 1 is the scratch location for 97-100: the suite's only other
+; location, and nothing is parked there (check 33's PLACE 2 1 puts the
+; coin back with PLACE 2 0 four lines later). Check 97 does not assume
+; that - it PROVES it, and fails loudly if some future check leaves an
+; object behind.
+;
+; 97 B16: flag 53 bit 7 ("objects were listed") must be MAINTAINED on
+; the LISTAT path, both ways. It used to be touched only by LISTOBJ:
+; LISTAT never set it when it listed something and never cleared it
+; when it listed nothing, which is the flag 53 divergence in
+; parser-bugs entry 5. Both references maintain it for both condacts
+; (jdaad.js:2379 listObjects sets 0x80 / clears it in the else arm;
+; daad_condacts.c:1922 _internal_listat clears F53_LISTED up front and
+; ORs it in per object printed).
+; The empty LISTAT here also exercises "SM53 alone" - NextDAAD used to
+; add a newline after it that neither reference produces. That is a
+; text-channel effect; only the bit is assertable from DSF.
+> _ _   LET 53 0                ; clear fOFlags, then let LISTAT drive it
+        LISTAT 1                ; nothing at location 1 -> SM53 alone
+        LT 53 128               ; bit 7 CLEAR: the empty LISTAT cleared it
+        PLACE 8 1               ; the bag becomes the only object there
+        LISTAT 1
+        GT 53 127               ; bit 7 SET from the LISTAT path too
+        MES "97 OK#n"
+        SKIP 1
+> _ _   MES "97 F#n"
+; 98 B16: bit 6 selects the listing form and list_at must READ it
+; without disturbing it. Bit 6 set = the continuous "a, b and c." form;
+; bit 6 clear = one object per line, which is the DEFAULT (flag 53
+; starts at 0) and is the form NextDAAD never produced because it
+; forced the continuous one. Here the bag is listed both ways; what is
+; assertable is that bit 6 survives and bit 7 lands on top of it.
+> _ _   LET 53 64               ; bit 6: continuous listing
+        LISTAT 1
+        EQ 53 192               ; bit 6 intact, bit 7 added
+        LET 53 0                ; back to the one-per-line default
+        LISTAT 1
+        EQ 53 128               ; bit 6 still clear, bit 7 still set
+        MES "98 OK#n"
+        SKIP 1
+> _ _   MES "98 F#n"
+; 99 B14 "caso A": a DOALL whose INITIAL search finds nothing performs
+; NEWTEXT and NOTDONE. It used to plain-pop, and because DOALL is
+; action-typed the dispatcher had already set isDone to 1, so an empty
+; DOALL exited the table as DONE. Contained in PRO 22 so the NOTDONE
+; lands on a table of its own - the PROCESS 22 push clears isDone, so
+; the three actions above it cannot mask the result the way they would
+; in a bare entry - the same containment pattern as checks 85 and 96.
+; The NEWTEXT half (the rest of a typed compound order is discarded) is
+; not assertable here, since it needs a compound order on the input
+; buffer: that is the harness's compound-abort script and the owner's
+; interactive leg.
+> _ _   PLACE 8 0               ; location 1 empty again
+        LET 53 0
+        LISTAT 1
+        LT 53 128               ; precondition PROVEN: nothing at loc 1
+        PROCESS 22              ; PRO 22 is a bare DOALL 1
+        ISNDONE                 ; caso A must exit the table NOTDONE
+        MES "99 OK#n"
+        SKIP 1
+> _ _   MES "99 F#n"
+; 100 B14 "caso B", the regression guard on 99: a DOALL that DID
+; iterate and has now run out must still complete the level as DONE.
+; Both references keep the two cases apart - msx2daad's
+; _internal_doall_continue carries the comment "No isDone/checkEntry/
+; lsBuffer mutation here (caso B per PCDAAD spec)" and its unit suite
+; carries D-CANCEL-2d, "DOALL exhausted *after iterating* must mark
+; DONE" - and NextDAAD reaches both through the one
+; eng_doall_next.exhausted label, so the split is by the entry value of
+; doallObj. Merging them would make a SUCCESSFUL "DROP ALL" answer
+; "I can't do that" and kill the rest of the player's order.
+> _ _   PLACE 8 1               ; exactly one object at location 1
+        PROCESS 23              ; PRO 23 is a bare DOALL 1
+        ISDONE                  ; caso B: iterated, then exhausted = DONE
+        PLACE 8 0               ; leave location 1 empty behind us
+        MES "100 OK#n"
+        SKIP 1
+> _ _   MES "100 F#n"
+; 101 B28: an out-of-range window number is IGNORED and the current
+; window stays selected. h_window masked the number with 7, so WINDOW 8
+; silently selected window 0 - a wrong window rather than a no-op. Both
+; references bail out (daad_condacts.c:1674 "if (window >= WINDOWS_NUM)
+; return;", jdaad.js:3455 "if (Parameter1 < NUM_WINDOWS)").
+; Flag 63 (fCurWin) is the observable. Nothing is printed between the
+; WINDOW calls, so the suite's own output stays in window 0.
+; The out-of-range value is passed INDIRECTLY: DRF rejects a literal
+; "WINDOW 8" at compile time ("Invalid window number, must be in the
+; 0-7 range"), so a literal cannot reach the interpreter at all. The
+; runtime guard is what this pins, and msx2daad's do_WINDOW reads its
+; parameter with getValueOrIndirection() before the same range test,
+; so the indirect form is the reference-faithful way to express it.
+> _ _   LET 110 8
+        WINDOW 1
+        EQ 63 1
+        WINDOW @110             ; out of range: ignored (was 8 AND 7 = 0)
+        EQ 63 1                 ; window 1 is STILL selected
+        WINDOW 0                ; restore the suite's window before MES
+        EQ 63 0
+        MES "101 OK#n"
+        SKIP 1
+> _ _   MES "101 F#n"
+; 102 B18 (OWNER LEG - typed verb, never fires automatically): EXIT n
+; with n non-zero is a full reset and restart, not a no-op. It was
+; routed to h_unimpl. There is no way to assert this in-suite: a
+; restart clears every flag and re-enters PRO 0, so any witness flag is
+; gone by the time anything could read it, and the suite would relaunch
+; itself forever. So the check is inverted and gated on a TYPED verb -
+; type XEXIT at the prompt:
+;   PASS = the screen clears and the suite runs again from check 1
+;          (flags cleared, objects reinitialised, PRO 0 re-entered).
+;   FAIL = "102 F" prints and the turn continues normally, which is
+;          exactly what the old h_unimpl no-op did.
+; The second entry is reachable ONLY if EXIT 1 returned to its caller.
+> XEXIT _ MES "102: EXIT 1 - expect a FULL RESTART now#n"
+        EXIT 1
+> XEXIT _ MES "102 F - EXIT 1 was a no-op#n"
+; ---- Wave C appended checks (103-104) ----
+; Same placement rule as 81-102: appended after them, so nothing before
+; here shifts. These two are about the PAGER, which no earlier check
+; exercises deliberately - every page this suite produces up to now is
+; incidental, a side effect of a screenful of OK lines.
+;
+; 103 the pager itself: printing more lines than the window holds must
+; fire "More...", wait, erase the prompt and CONTINUE THE ENTRY. The
+; witness flag is what makes that last part assertable - prn_more_check
+; (src/print.asm) saves and restores the outer reader position, its
+; in-flight push depth, the MMU-save shadow and the physical MMU slot
+; around the nested SM32 print, and a fault in any of that corrupts the
+; message stream the entry is still reading from rather than announcing
+; itself. 40 lines against a 32-row window (25 on jDAAD) guarantees at
+; least one page on both. The lines are NUMBERED rather than repeated
+; filler: the harness recovers a turn's new text by working out how far
+; the tilemap scrolled (tests/parser/tilemap.py scroll_delta), and forty
+; IDENTICAL rows make that shift ambiguous - measured, it silently
+; dropped nine of them. Distinct rows make the page countable, which is
+; the whole point of the check.
+; This is also the harness's live test of breakpoint-driven page capture
+; (tests/parser/nleg.py): a page fired here is captured by the emulator
+; at the pager's park point, so the lines below must appear in the
+; replay transcript IN FULL.
+> _ _   LET 123 103
+        MES "103 PAGER#n"
+        MES "01#n02#n03#n04#n05#n06#n07#n08#n09#n10#n"
+        MES "11#n12#n13#n14#n15#n16#n17#n18#n19#n20#n"
+        MES "21#n22#n23#n24#n25#n26#n27#n28#n29#n30#n"
+        MES "31#n32#n33#n34#n35#n36#n37#n38#n39#n40#n"
+        EQ 123 103
+        MES "103 OK#n"
+        SKIP 1
+> _ _   MES "103 F#n"
+; 104 the pager's TIMEOUT. TIME's second parameter is flag 49, the
+; timeout control byte: bit 1 arms the "More..." wait specifically
+; (src/print.asm prn_more_check passes E=$02 to wait_key_timeout, which
+; ANDs it against flag 49 and falls through to a plain, untimed wait_key
+; when the bit is clear). Nothing in this suite ever armed it before, so
+; wait_key_timeout's arm-and-expire path has never run at all - only its
+; not-armed fall-through has.
+;
+; A page fires with a 1-second timeout armed and NOBODY PRESSES A KEY:
+; the countdown must expire on its own and set flag 49 bit 7 on top of
+; the bit 1 that armed it, so 2 + 128 = 130.
+;
+; The disarm is a SEPARATE entry on purpose. An EQ that fails aborts its
+; entry, so a TIME 0 0 sitting after the assertion would be skipped on
+; exactly the run that failed - leaving the pager timeout armed for
+; everything after this check, including the SUITES DONE pause below.
+; The witness flag carries the verdict across the entry boundary instead.
+> _ _   LET 123 104
+        LET 127 0
+        TIME 1 2
+        MES "104 PAGER TIMEOUT - DO NOT PRESS A KEY#n"
+        MES "51#n52#n53#n54#n55#n56#n57#n58#n59#n60#n"
+        MES "61#n62#n63#n64#n65#n66#n67#n68#n69#n70#n"
+        MES "71#n72#n73#n74#n75#n76#n77#n78#n79#n80#n"
+        MES "81#n82#n83#n84#n85#n86#n87#n88#n89#n90#n"
+        EQ 49 130               ; bit 1 still armed, bit 7 = it expired
+        LET 127 1
+> _ _   TIME 0 0                ; ALWAYS disarm, whatever happened above
+        EQ 127 1
+        EQ 123 104
+        MES "104 OK#n"
+        SKIP 1
+> _ _   MES "104 F#n"
+; ---- done-marking checks (105-108) ----
+; Appended after 103-104 under the same placement rule: nothing before
+; here shifts. These four close the coverage gap that let MOVE and
+; PICTURE go years without marking the table done on every path (owner
+; ruling 2026-08-04) - no check we or Uto run touched it, which is
+; exactly why it survived.
+;
+; MESSAGE-TABLE CEILING - READ BEFORE ADDING ANY MORE MES LITERALS.
+; This fixture sat at EXACTLY 255 user messages (the byte-wide count's
+; ceiling) before these checks landed, so every literal added from here
+; on SPILLS. DRF handles it silently and correctly: the overflow
+; literals are allocated as SYSTEM messages instead and the emitted
+; opcode changes from MES 77 ($4D) to SYSMESS 54 ($36). Verified in the
+; compiled DDB, not assumed - "106 F" through "SUITES DONE" are now
+; SM61-SM66, plus SM67/SM68 for /PRO 14's and /PRO 18's literals, and
+; the header's sysmess count went 61 -> 69 so h_sysmess's bounds check
+; still passes. No behavioural change: SYSMESS and MES share cprops
+; typing ($81, action, marks done) and the same print_msg tail, so
+; /PRO 18's "MES stamps done" premise for check 71 still holds. The
+; margin is thin though - the interpreter's own highest system message
+; is SM60 (src: SM12..SM60), i.e. the spill begins one slot above it.
+;
+; HOW THEY WORK. ISDONE reads ONE accumulating cell, so an ISDONE placed
+; straight after the condact under test would read every earlier stamp
+; in this table too (every MES above has set it). A PROCESS push is the
+; only thing that CLEARS the cell, and the matching pop leaves it alone,
+; so a helper table whose ONLY condact is the one under test reports
+; that condact's stamp and nothing else. Same instrument as checks
+; 31/32. The helpers are PRO 24-26 at the foot of this file, and the
+; caller sets up flag 33 and the location flag HERE, before the push -
+; a LET inside the helper is action-typed and would stamp done itself,
+; which would make every one of these pass vacuously.
+;
+; 105 MOVE's SUCCESS arm. Already marked before the ruling (h_move
+; called eng_set_done on .match), so this is a regression pin, not new
+; behaviour: verb 2 = NORTH, which location 0's connection list has.
+> _ _   LET 33 2
+        LET 121 0
+        PROCESS 24
+        ISDONE
+        EQ 121 0                ; and it still MOVEd (NORTH 0 -> 0)
+        MES "105 OK#n"
+        SKIP 1
+> _ _   MES "105 F#n"
+; 106 MOVE's NO-MATCH arm - NEW behaviour. Verb 3 = SOUTH, which
+; location 0's connection list does not have, so h_move reaches
+; .nomatch and fails the entry. Before the ruling that path returned
+; c_false without ever stamping, and this printed F.
+> _ _   LET 33 3
+        LET 122 0
+        PROCESS 25
+        ISDONE
+        MES "106 OK#n"
+        SKIP 1
+> _ _   MES "106 F#n"
+; 107 MOVE's VERB-BAIL arm - NEW behaviour, and the exit neither
+; reference reaches the same way: msx2daad's "if (flags[fVerb]<14)"
+; guard falls through to checkEntry = false and the dispatcher stamps
+; anyway, while jdaad has no guard at all. Verb 20 is >= 14, so h_move
+; bails at "cp 14 / jp nc, c_false" before it reads the flag - which is
+; why this reuses PRO 25's MOVE 122 unchanged. The EQ pins that the
+; flag came back untouched; it cannot tell the bail apart from .nomatch
+; (location 1 has no connections, so that arm would leave 1 as well,
+; and both arms mark done now by design) - it is the bail that runs.
+> _ _   LET 33 20
+        LET 122 1
+        PROCESS 25
+        ISDONE
+        EQ 122 1
+        MES "107 OK#n"
+        SKIP 1
+> _ _   MES "107 F#n"
+; 108 PICTURE marks done - NEW behaviour. Same missing-art premise as
+; check 64: sd\SUITE\ holds no 200.*, every probe in the extension
+; chain misses, gfx_load fails clean and h_picture reports false, so
+; PRO 26's single entry aborts and the table ends. Before the ruling
+; PICTURE stamped done NOWHERE (ovl2_true/ovl2_false touch carry only,
+; and its cprops row is condition-typed so the dispatcher stamps
+; nothing either), and this printed F. The success arm cannot be
+; asserted from this leg - the suite deliberately stages no art at all
+; - but h_picture stamps at ENTRY, so success and failure are the same
+; single instruction and this check covers both.
+> _ _   PROCESS 26
+        ISDONE
+        MES "108 OK#n"
+        SKIP 1
+> _ _   MES "108 F#n"
+; ---- article-stripping checks (109-110) ----
+; Same placement rule as 81-108: appended after them, so nothing before
+; here shifts. NOTHING in this suite tested article handling at all,
+; which is exactly how the defect below survived to silicon.
+;
+; THE RULE (owner ruling 2026-08-05):
+;   LIST output strips NOTHING - LISTOBJ/LISTAT/inventory print the
+;   object text whole, article and all. Confirmed on real hardware by
+;   the owner against DSNEXTE3.BIN, DAAD Ready's own ZX Next
+;   interpreter. NextDAAD ran ONE state machine for both callers and
+;   discarded every character up to the first space, so "a pair of
+;   dungarees" listed as "pair of dungarees" - and a text with NO
+;   space in it printed nothing at all, on either path.
+;   SUBSTITUTION ("_" in a message) strips a leading "a ", "an ",
+;   "some " or "the " and nothing else, case-insensitively. A first
+;   word that is NOT one of those survives: jDAAD removes the first
+;   word whatever it is (jdaad.js:1588), which destroys descriptive
+;   text, and NextDAAD deliberately does not - it follows msx2daad's
+;   article-only rule (daad_msg.c:127-133), plus "some " per DAAD
+;   Ready's manual and "the " per the owner's 323-text corpus survey.
+;
+; BOTH ARE VISUAL, like checks 35-38: no condact reads printed text
+; back, so the OK line only says the check RAN. Score them by reading
+; the lines - each printed name must equal the [expected] beside it,
+; character for character. A " F" is impossible here by construction.
+;
+; The '@' (capitalising) escape cannot be covered from this fixture at
+; all: print.asm's prn_decoded treats '@' as an ordinary character
+; unless header byte 1 bit 0 says the database is SPANISH, and this
+; fixture is compiled EN. It needs a Spanish DDB - owner leg.
+> _ _   SETCO 0
+        MES "109 SUB [brass lamp] = _#n"
+        SETCO 1
+        MES "109 SUB [old box] = _#n"
+        SETCO 10
+        MES "109 SUB [silver keys] = _#n"
+        SETCO 11
+        MES "109 SUB [rusty anvil] = _#n"
+        SETCO 12
+        MES "109 SUB [somersault rope] = _#n"
+        SETCO 13
+        MES "109 SUB [iron gate] = _#n"
+        MES "109 OK#n"
+; 110 the LIST half. Location 1 rather than 0, because check 100 leaves
+; it EMPTY ("PLACE 8 0 - leave location 1 empty behind us") and nothing
+; between there and here parks anything on it - so the three names below
+; are the WHOLE listing and a fourth line is itself a failure. Location
+; 1 doubles as "inside object 1", the box, which is why the fixture has
+; always been careful with it; the PLACE 8 0 below is belt and braces
+; against a future edit that forgets. Flag 53 bit 6 clear = one object
+; per line, which is also the default.
+> _ _   PLACE 8 0
+        PLACE 10 1
+        PLACE 11 1
+        PLACE 12 1
+        LET 53 0
+        MES "110 LIST expect: some silver keys | rusty anvil | somersault rope#n110 LIST actual, one per line and nothing else:#n"
+        LISTAT 1
+        MES "110 OK#n"
+> _ _   MES "SUITES DONE - KEY FOR E03#n"
+        ANYKEY
+        PROCESS 5
+/PRO 2
+> _ _   GET 3
+/PRO 3
+> _ _   DONE
+/PRO 4
+> _ _   NOTDONE
+/PRO 5
+> _ _   PROCESS 6
+/PRO 6
+> _ _   PROCESS 7
+/PRO 7
+> _ _   PROCESS 8
+/PRO 8
+> _ _   PROCESS 9
+/PRO 9
+> _ _   PROCESS 10
+/PRO 10
+> _ _   PROCESS 11
+/PRO 11
+> _ _   PROCESS 12
+/PRO 12
+> _ _   PROCESS 13
+/PRO 13
+> _ _   PROCESS 14
+/PRO 14
+> _ _   MES "E03 UNREACHED F#n"
+/PRO 15
+> _ _   DOALL 0
+        PLUS 113 1
+/PRO 16
+; REDO check (45): restart this table once, guarded by flag 113.
+> _ _   PLUS 113 1
+        EQ 113 1
+        REDO
+> _ _   DONE
+/PRO 17
+; DOALL capacity-cancel check (49): GET each object at loc 0. AUTOG
+; refuses SM27 (MAXCARR 0) and cancels the DOALL after object 1.
+> _ _   DOALL 0
+        PLUS 115 1
+        AUTOG
+        DONE
+/PRO 18
+; XUNDONE check (71) helper: MES stamps done=1, EXTERN 0 7 (XUNDONE)
+; clears it, entry falls through its own terminator (no DONE/NOTDONE)
+; so the table-end pop propagates the cleared stamp, not a forced one.
+> _ _   MES "71 sub ran#n"
+        EXTERN 0 7
+/PRO 19
+; Weight-before-count helper (86): AUTOG each object at loc 0 with both
+; capacity and strength at 0. The weight refusal (SM43) leaves the DOALL
+; alone, so the counter reaches 2; a count-first refusal (SM27) cancels
+; the DOALL and leaves it at 1.
+> _ _   DOALL 0
+        PLUS 125 1
+        AUTOG
+        DONE
+/PRO 20
+; Refused-GET containment (85): with MAXCARR 0 the GET refuses SM27 and
+; performs DONE, which pops THIS process and returns to check 85's own
+; entry - so the LET below must never run and the assertions after the
+; PROCESS 20 call still get to run.
+> _ _   GET 3
+        LET 124 1               ; unreachable
+/PRO 21
+; AUTOT containment (96): AUTOT finds nothing, prints its composite
+; family message and performs DONE, which pops THIS process and returns
+; to check 96's own entry instead of aborting PRO 1. Same pattern as
+; PRO 20.
+> _ _   AUTOT 1
+        LET 126 1               ; unreachable
+/PRO 22
+; Empty-DOALL containment (99, B14 "caso A"): location 1 holds nothing,
+; so the DOALL's INITIAL search finds no object and must cancel with
+; NEWTEXT + NOTDONE. The NOTDONE pops THIS process with isDone at 0,
+; which check 99 reads back with ISNDONE. A bare DOALL is the whole
+; entry on purpose - the table must end on the DOALL itself.
+> _ _   DOALL 1
+/PRO 23
+; Iterated-DOALL containment (100, B14 "caso B"): identical to PRO 22
+; except that location 1 holds exactly one object, so the DOALL DOES
+; iterate before running out. Exhaustion after iteration must leave the
+; table DONE (the isDone stamp DOALL's action typing already set), which
+; check 100 reads back with ISDONE. The two PROCesses differ only in
+; the world state, which is what makes the pair a real discriminator.
+> _ _   DOALL 1
+/PRO 24
+; Done-marking helper (105): MOVE's success arm, alone in its table.
+; ONE condact and no other - see the checks' own header for why
+; anything else here (a LET, a MES) would make them pass vacuously.
+> _ _   MOVE 121
+/PRO 25
+; Done-marking helper (106 and 107): MOVE's two failing arms. Which one
+; runs is decided by flag 33 in the caller - verb 3 reaches .nomatch,
+; verb 20 bails at the "cp 14" guard without reading flag 122 at all.
+> _ _   MOVE 122
+/PRO 26
+; Done-marking helper (108): PICTURE with no art staged. The condition
+; fails, so this entry aborts and the table ends on it; the isDone the
+; pop propagates is whatever h_picture stamped.
+> _ _   PICTURE 200
+/END
