@@ -373,11 +373,11 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
 
     /* PORT: drb.php:1823-1831. */
     if (opts->verbose) {
-        /* PORT: drb.php:1829, 1310-1313. The ternary prints the
-           INVERSE of the real file byte order; NEXTDAAD prints 'big'
-           though its words are little-endian - matches the reference
-           transcript (S24). */
-        printf("Endianness is %s endian\n", target->big_endian ? "little" : "big");
+        /* PORT: drb.php:1829, 1310-1313 as fixed upstream at ff45ff2
+           (2026-08-28): the flag's inversion was corrected, so the
+           display now names the real file byte order. Bytes never
+           changed - the old double inversion cancelled. */
+        printf("Endianness is %s endian\n", target->big_endian ? "big" : "little");
         {
             char buf[24];
             fmt_addr(buf, sizeof buf, base_address);
