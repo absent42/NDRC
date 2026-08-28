@@ -24,7 +24,7 @@ produces game.DDB in the same directory.
 ZX, NEXTDAAD, CPC, C64, CP4, CPM, MSX, MSX2, ZX81, PCW, PC, AMIGA, ST,
 HTML.
 
-See [docs\cli.md](docs\cli.md) for the full target/subtarget list, invocation
+See [docs\cli.md](docs/cli.md) for the full target/subtarget list, invocation
 grammar and option reference.
 
 ## Building from source
