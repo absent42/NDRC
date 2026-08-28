@@ -987,12 +987,18 @@ def _include_variant_dsf(tmpdir: Path) -> Path:
     (USintactic.pas:320/sintactic.c:583), so the diagnostic fires INSIDE
     the include, pinning which file/line gets reported."""
     src = DSF_FIXTURE.read_bytes().decode("latin-1")
-    marker = "THEN    2       conjugation\r\n"
+    # Anchor on the line text alone and reuse whatever terminator
+    # the checkout carries: the .DSF fixtures are not -text pinned,
+    # so git hands out CRLF on Windows and LF elsewhere (the /END
+    # splices above key on bare text for the same reason).
+    marker = "THEN    2       conjugation"
     assert src.count(marker) == 1
-    src = src.replace(marker, marker + "#include BADVOC.INC\r\n")
+    eol = "\r\n" if "\r\n" in src else "\n"
+    src = src.replace(marker, marker + eol + "#include BADVOC.INC")
     dest = tmpdir / "g.dsf"
     dest.write_bytes(src.encode("latin-1"))
-    (tmpdir / "BADVOC.INC").write_bytes(b"ZZZINVALID 2 blah\r\n")
+    (tmpdir / "BADVOC.INC").write_bytes(
+        ("ZZZINVALID 2 blah" + eol).encode("latin-1"))
     return dest
 
 

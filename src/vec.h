@@ -51,21 +51,31 @@ Arena *vec_arena(const Vec *v);
    redefinition on the wrapper bodies. The untyped API below remains
    the substrate and stays legitimate for genuinely heterogeneous
    uses; such a use needs a comment saying why. */
+/* A VEC_DECLARE in a .c generates all six wrappers into the main
+   source file, where clang's -Wunused-function fires on the ones the
+   caller does not use (in a header it does not). They are generated
+   API surface, not dead code. */
+#if defined(__GNUC__)
+#define NDRC_VEC_FN static inline __attribute__((unused))
+#else
+#define NDRC_VEC_FN static inline
+#endif
+
 #define VEC_DECLARE(name, elemtype)                                    \
     typedef struct Vec_##name Vec_##name;  /* never defined */         \
-    static inline Vec_##name *vec_new_##name(Arena *a)                 \
+    NDRC_VEC_FN Vec_##name *vec_new_##name(Arena *a)                   \
     { return (Vec_##name *)vec_new(a); }                               \
-    static inline void vec_push_##name(Vec_##name *s, elemtype it)     \
+    NDRC_VEC_FN void vec_push_##name(Vec_##name *s, elemtype it)       \
     { vec_push((Vec *)s, (void *)it); }                                \
-    static inline elemtype vec_at_##name(const Vec_##name *s,          \
-                                         size_t i)                     \
+    NDRC_VEC_FN elemtype vec_at_##name(const Vec_##name *s,            \
+                                       size_t i)                       \
     { return (elemtype)vec_at((const Vec *)s, i); }                    \
-    static inline void vec_set_##name(Vec_##name *s, size_t i,         \
-                                      elemtype it)                     \
+    NDRC_VEC_FN void vec_set_##name(Vec_##name *s, size_t i,           \
+                                    elemtype it)                       \
     { vec_set((Vec *)s, i, (void *)it); }                              \
-    static inline size_t vec_len_##name(const Vec_##name *s)           \
+    NDRC_VEC_FN size_t vec_len_##name(const Vec_##name *s)             \
     { return vec_len((const Vec *)s); }                                \
-    static inline Arena *vec_arena_##name(const Vec_##name *s)         \
+    NDRC_VEC_FN Arena *vec_arena_##name(const Vec_##name *s)           \
     { return vec_arena((const Vec *)s); }
 
 /* Vector of C strings - the one generic element type, homed here. */

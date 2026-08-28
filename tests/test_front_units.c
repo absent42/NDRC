@@ -864,6 +864,7 @@ TEST(voctree_add_defines_voc_symbol)
     CHECK_INT(voctree_add(vt, a, d, sl, "torch", 42, VOC_NOUN), 1);
     CHECK_INT(symbols_lookup(sl, a, "_VOC_TORCH", &v), 1);
     CHECK_INT(v, 42);
+    arena_free(a);
 }
 
 /* Defect 19.52: a NEW word whose auto-generated _VOC_ symbol collides
