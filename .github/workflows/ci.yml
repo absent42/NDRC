@@ -147,7 +147,7 @@ jobs:
         run: |
           ver=$(sed -n 's/^#define NDRC_VERSION "\(.*\)"/\1/p' src/main.c)
           echo "ver=$ver" >> "$GITHUB_OUTPUT"
-      - name: Assemble release package
+      - name: Assemble win64 package
         run: |
           mkdir -p dist
           zip -j "dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip" \
@@ -156,3 +156,19 @@ jobs:
         with:
           name: ndrc-${{ steps.version.outputs.ver }}-win64
           path: dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip
+      # The two builds share src/*.o, so the PE objects have to go
+      # before the native link sees them as up to date.
+      - name: Drop the cross-build objects
+        run: make clean
+      - name: Build for Linux
+        run: make ndrc EXTRA=-Werror
+      # -C flattens docs/cli.md to the archive root, as zip -j does
+      # above. Built on ubuntu-latest, so it needs that glibc or newer.
+      - name: Assemble linux64 package
+        run: |
+          tar -czf "dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz" \
+            ndrc LICENSE README.md -C docs cli.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ndrc-${{ steps.version.outputs.ver }}-linux64
+          path: dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz
