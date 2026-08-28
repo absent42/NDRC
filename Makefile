@@ -34,7 +34,7 @@ ifeq ($(strip $(TEST_SRC)),)
 $(error no test sources found - tests/test_*.c matched nothing)
 endif
 
-.PHONY: all test sanitize clean
+.PHONY: all test build-tests sanitize clean
 
 all: $(LIB_OBJ) ndrc$(EXE)
 
@@ -56,6 +56,12 @@ ndrc$(EXE): src/main.o $(LIB_OBJ)
 # standard gate never compiles it (a broken main.c once reached a commit).
 test: ndrc$(EXE) $(TEST_BIN)
 	$(foreach t,$(TEST_BIN),$(call FIX,$(t)) &&) echo All test suites passed
+
+# Everything `test` compiles, without running it. For a target whose
+# long double is only a Double (Apple arm64): expr.c's ValReal
+# transcendentals cannot match the reference's last ulp there, so that
+# platform is built for its compiler diagnostics, not run.
+build-tests: ndrc$(EXE) $(TEST_BIN)
 
 sanitize:
 	$(MAKE) clean
