@@ -2,8 +2,7 @@
 
 NDRC compiles DAAD Adventure Writer source (.DSF) into a DAAD database
 (.DDB). It is one self-contained executable with no runtime, no
-interpreter and no companion installation, for Windows, Linux and
-macOS.
+interpreter and no companion installation, for Windows and Linux.
 
 It is a from-scratch C port of DRC, Uto's DAAD Reborn Compiler (a
 FreePascal front end and a PHP back end), verified byte-identical
