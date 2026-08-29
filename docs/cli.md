@@ -115,7 +115,7 @@ Case-insensitive (upper-cased before matching), dash-prefixed.
 | `-p` | Force padding. Cannot combine with `-np`. |
 | `-x` | Dump TX (text) sections to a separate `0.XMB` file instead of embedding them in the database. |
 | `-b=<addr>` | Override the target's default base address. Decimal, or hex with a `0x`/`0X` prefix. Must resolve to 1-0xFFFF. |
-| `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Output DDBs remain format-identical and decode on every DAAD interpreter. |
+| `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Encodes text with an optimal parse (smaller output than the sequential encoder); output DDBs remain format-identical and decode on every DAAD interpreter. |
 | `--tok[=path]` | Write the selected token table as a standard `.tok` file (bare form: `<input>.tok`, where the normal override lookup finds it on the next run). Implies `-auto-tokens`. Like `--json=`, a `--tok=` argument is never claimed as the output name. |
 
 An unrecognised option, in either set, stops compilation immediately
@@ -130,10 +130,11 @@ stray positional is rejected outright - see below.
 ## Per-game token selection
 
 `-auto-tokens` replaces the builtin language token table with up to 128
-tokens chosen from the compiling game's own text, then compresses with
-the normal sequential encoder. On real English games this measured 6.7%
-to 13.7% off compressed text+table against the builtin table. Selection
-is deterministic: the same source always produces the same table.
+tokens chosen from the compiling game's own text, then encodes the text
+with an optimal parse over that table. On real English games this
+measured 7.8% to 14.4% off compressed text+table against the builtin
+table. Selection is deterministic: the same source always produces the
+same table.
 
 Without the flag, output is byte-identical to DRC, as always. A
 compile with the flag self-checks: every compressed message is decoded
@@ -141,7 +142,11 @@ back and compared against the source text before the DDB is written.
 
 The freeze workflow: compile once with `-auto-tokens --tok`, then drop
 both flags - the written `.tok` sits beside the input where the normal
-override lookup picks it up, and stock DRC accepts the same file.
+override lookup picks it up. The tee records `"encoder": "optimal"`
+and the reload honours it, so the frozen build is byte-identical to the
+flagged one. Hand-written and DRT `.tok` files without the marker
+compile exactly as DRC would; stock DRC accepts a marked `.tok` and
+simply ignores the field.
 
 On targets other than NEXTDAAD, selected tokens never contain `_` or
 `@` (object-name and print placeholders): on the original ZX Spectrum
