@@ -1,0 +1,162 @@
+; AUTOTOK.DSF - integration fixture for -auto-tokens: English prose
+; with natural phrase repetition, where a per-game token table must
+; beat the builtin EN table by a clear margin.
+
+#define fPlayer 38
+#define fVerb   33
+
+/CTL
+_
+/VOC
+NORTH  2  noun
+SOUTH  3  noun
+EAST   4  noun
+WEST   5  noun
+LOOK   6  verb
+QUIT   7  verb
+GET    8  verb
+DROP   9  verb
+STONE  10 noun
+SAVE   26 verb
+LOAD   27 verb
+/STX
+/0   "It's too dark to see anything."
+/1   "I can also see:"
+/2   "What now?"
+/3   "What next?"
+/4   "What should I do now?"
+/5   "What should I do next?"
+/6   "I didn't understand."
+/7   "I can't go in that direction."
+/8   "I can't do that."
+/9   "I have with me:"
+/10  "I am wearing:"
+/11  " "
+/12  "Are you sure?"
+/13  "Another go?"
+/14  " "
+/15  "OK."
+/16  "Press any key."
+/17  " "
+/18  " "
+/19  " "
+/20  " "
+/21  " "
+/22  " "
+/23  "I'm not wearing one of those."
+/24  "I can't. My hands are full."
+/25  "I already have the _."
+/26  "There isn't one of those here."
+/27  "I can't carry any more things."
+/28  "I don't have one of those."
+/29  "I'm already wearing the _."
+/30  "Y"
+/31  "N"
+/32  "More..."
+/33  ">"
+/34  " "
+/35  " "
+/36  "I now have the _."
+/37  "I'm now wearing the _."
+/38  "I've removed the _."
+/39  "I've dropped the _."
+/40  "I can't wear the _."
+/41  "I can't remove the _."
+/42  "I can't remove the _. My hands are full."
+/43  "The _ weighs too much for me."
+/44  "The _ is in the"
+/45  "The _ isn't in the"
+/46  ", "
+/47  " and "
+/48  ".#n"
+/49  "I don't have the _."
+/50  "I'm not wearing the _."
+/51  "."
+/52  "There isn't one of those in the"
+/53  "Nothing."
+/54  " "
+/55  " "
+/56  " "
+/57  "I/O Error"
+/58  " "
+/59  "File name error."
+/60  "Type in name of file."
+/MTX
+/0   "You are standing in the great hall of the old castle. The walls of the great hall are hung with faded tapestries, and the air of the old castle is cold and still."
+/1   "There is nothing special about the wooden door. The wooden door is old and heavy, and the iron hinges of the wooden door are red with rust."
+/2   "You can see nothing special about the stone stairway. The stone stairway winds up into the darkness of the north tower."
+/3   "The old man looks at you and shakes his head slowly. There is nothing more the old man will say to you for the moment."
+/4   "You push the wooden door with all your strength, but the wooden door will not move. Perhaps there is another way into the north tower."
+/5   "The iron key is cold and heavy in your hand. There is something written on the iron key, but the letters are too worn to read."
+/6   "You are standing at the foot of the stone stairway. The air is cold here, and you can hear the wind in the north tower far above."
+/7   "There is nothing here but dust and shadows. The dust of many years lies thick upon the stone floor of the great hall."
+/8   "You can hear the sound of water somewhere far below, and the slow drip of water echoes through the darkness of the old castle."
+/9   "The candle gutters in the cold air, and the shadows of the great hall lean and dance upon the walls around you."
+/10  "You are standing in the north tower. Through the narrow window you can see the forest stretching away into the grey distance."
+/11  "The old man takes the iron key and turns it over slowly in his thin hands. At last the old man looks up at you and nods."
+/12  "There is a wooden chest against the wall. The wooden chest is bound with iron bands, and the lid of the wooden chest is closed."
+/13  "You open the wooden chest. Inside the wooden chest there is nothing but a piece of old rope and the smell of damp and years."
+/14  "The rope is old but strong. With the rope you could perhaps climb down from the narrow window of the north tower."
+/15  "You tie the rope to the iron ring beside the narrow window and let the end of the rope fall away into the darkness below."
+/16  "You are standing in the courtyard of the old castle. Grass grows between the stones, and the walls rise grey and silent around you."
+/17  "There is nothing special about the well. The well is deep, and when you drop a stone into the well you hear nothing for a long time."
+/18  "The gate of the courtyard is barred from the other side. You will not leave the old castle by the gate of the courtyard."
+/19  "You can see nothing in the darkness of the well. The cold air of the well smells of water and old stone."
+/20  "The old man is standing by the gate of the courtyard. The old man beckons to you slowly and turns away into the shadows."
+/21  "You follow the old man through the shadows of the courtyard, down the worn steps, and into the darkness beneath the old castle."
+/22  "There is a light somewhere ahead of you in the darkness, and the sound of water is louder now beneath the old castle."
+/23  "The passage opens into a wide cavern. Black water stretches away before you, and a small boat lies at the edge of the black water."
+/OTX
+/0 "a granite stone"
+/LTX
+/0   "The great hall of the old castle. Faded tapestries hang on the walls, and a stone stairway winds up to the north.#n"
+/1   "The foot of the stone stairway. The great hall lies to the south, and the cold air moves down the stairway from the north tower.#n"
+/2   "The north tower. A narrow window looks out over the forest, and the stone stairway winds down into the old castle below.#n"
+/3   "The courtyard of the old castle. Grass grows between the stones, and a deep well stands in the middle of the courtyard.#n"
+/CON
+/0
+NORTH 1
+/1
+SOUTH 0
+NORTH 2
+/2
+SOUTH 1
+NORTH 3
+/3
+SOUTH 2
+/OBJ
+/0    0   1   _ _  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _   STONE _
+/PRO 0
+> _ _   AT 0
+        PROCESS 6
+> _ _   WINDOW 1
+        WINAT 0 0
+        WINSIZE 25 127
+        CLS
+> _ _   DESC @fPlayer
+> _ _   PROCESS 1
+/PRO 1
+> _ _   PARSE 0
+        REDO
+> _ _   PROCESS 5
+        ISDONE
+        REDO
+> _ _   MOVE fPlayer
+        CLS
+        RESTART
+> _ _   NEWTEXT
+        LT fVerb 14
+        SYSMESS 7
+        REDO
+> _ _   SYSMESS 8
+        REDO
+/PRO 5
+> SAVE  _   SAVE 0
+            CLS
+            RESTART
+> LOAD  _   LOAD 0
+            CLS
+            RESTART
+/PRO 6
+> _ _   GOTO 2
+/END
