@@ -226,6 +226,60 @@ TEST(select_caps_at_128)
     }
 }
 
+TEST(snapshot_verify_roundtrip_and_tamper)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts;
+    Vec_MsgTable *before;
+    Vec_Str *final_tokens;
+    long savings = 0;
+
+    add_msg(a, adv->messages, "THE CAT SAT ON THE MAT. THE CAT SAT.");
+    add_msg(a, adv->locations, "THE MAT IS ON THE FLOOR BY THE CAT.");
+    add_msg(a, adv->sysmess, "OK.");
+
+    ts = tokselect_run(a, d, adv, 0);
+    before = tokselect_snapshot(a, adv);
+    final_tokens = tokens_compress(a, d, adv, ts, 0, &savings);
+
+    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+
+    /* Tampered text must fail the check. */
+    str_push(vec_at_Message(adv->messages, 0)->Text, 'Z');
+    CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+}
+
+TEST(verify_catches_wrong_table)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts;
+    Vec_MsgTable *before;
+    Vec_Str *final_tokens;
+    long savings = 0;
+
+    add_msg(a, adv->messages, "ABABABABABAB CDCDCDCDCDCD");
+    ts = tokselect_run(a, d, adv, 0);
+    before = tokselect_snapshot(a, adv);
+    final_tokens = tokens_compress(a, d, adv, ts, 0, &savings);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+
+    /* Two independent winners (AB, CD) must survive - assert it, so a
+       selector change cannot quietly hollow this test out. */
+    CHECK(vec_len_Str(final_tokens) >= 3);
+    if (vec_len_Str(final_tokens) >= 3) {
+        /* Swap two surviving tokens: references now expand wrongly. */
+        Str *t1 = vec_at_Str(final_tokens, 1);
+        Str *t2 = vec_at_Str(final_tokens, 2);
+        vec_set_Str(final_tokens, 1, t2);
+        vec_set_Str(final_tokens, 2, t1);
+        CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+    }
+}
+
 int main(void)
 {
     RUN(parse_literal_only);
@@ -239,5 +293,7 @@ int main(void)
     RUN(select_placeholder_exclusion);
     RUN(select_empty_and_tiny_input);
     RUN(select_caps_at_128);
+    RUN(snapshot_verify_roundtrip_and_tamper);
+    RUN(verify_catches_wrong_table);
     return test_summary("tokselect");
 }

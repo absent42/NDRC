@@ -434,3 +434,65 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
                  (unsigned long)vec_len_Str(chosen));
     return ts;
 }
+
+Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv)
+{
+    const Vec_Message *tabs[4];
+    Vec_MsgTable *out = vec_new_MsgTable(a);
+    size_t t, k;
+
+    compressable_tables(adv, tabs);
+    for (t = 0; t < 4; t++) {
+        Vec_Message *copy = vec_new_Message(a);
+        for (k = 0; k < vec_len_Message(tabs[t]); k++) {
+            Message *src = vec_at_Message(tabs[t], k);
+            Message *m = arena_calloc(a, sizeof(*m));
+            m->Text = str_new(a);
+            str_append_n(m->Text, str_bytes(src->Text), str_len(src->Text));
+            vec_push_Message(copy, m);
+        }
+        vec_push_MsgTable(out, copy);
+    }
+    return out;
+}
+
+int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
+                     const Vec_Str *final_tokens)
+{
+    const Vec_Message *tabs[4];
+    Arena *scratch = arena_new(0);
+    size_t t, k, i;
+    int ok = 1;
+
+    compressable_tables(adv, tabs);
+    for (t = 0; ok && t < 4; t++) {
+        const Vec_Message *now = tabs[t];
+        Vec_Message *was = vec_at_MsgTable(before, t);
+        if (vec_len_Message(now) != vec_len_Message(was)) { ok = 0; break; }
+        for (k = 0; ok && k < vec_len_Message(now); k++) {
+            Str *enc = vec_at_Message(now, k)->Text;
+            Str *ref = vec_at_Message(was, k)->Text;
+            Str *dec = str_new(scratch);
+            const unsigned char *b = str_bytes(enc);
+            /* Byte 127 (token 0's delimiter) falls through as a
+               literal: token 0 is 0x00 and never matches valid DAAD
+               text, so 127 is unreachable in compressed output. */
+            for (i = 0; i < str_len(enc); i++) {
+                if (b[i] >= 128) {
+                    size_t j = (size_t)b[i] - 127;   /* pass-2 delim j+127 */
+                    Str *tok;
+                    if (j >= vec_len_Str(final_tokens)) { ok = 0; break; }
+                    tok = vec_at_Str(final_tokens, j);
+                    str_append_n(dec, str_bytes(tok), str_len(tok));
+                } else {
+                    str_push(dec, (char)b[i]);
+                }
+            }
+            if (ok && (str_len(dec) != str_len(ref) ||
+                       memcmp(str_bytes(dec), str_bytes(ref),
+                              str_len(ref)) != 0)) ok = 0;
+        }
+    }
+    arena_free(scratch);
+    return ok;
+}
