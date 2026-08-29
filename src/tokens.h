@@ -73,4 +73,14 @@ void tokens_emit(Str *out, const Vec_Str *final_tokens, long *current_address);
    `$i < strlen($hex)`. Exposed for direct testing per the brief. */
 Str *tokens_hex2str(Arena *a, const char *hex, size_t hex_len);
 
+/* The .tok candidate the override lookup WOULD use for this input
+   (same resolution as tokens_load_override), or NULL. Lets the
+   -auto-tokens path name the file it is bypassing. */
+const char *tokens_probe_override(Arena *a, const char *json_input_path);
+
+/* Writes ts as a .tok: {"compression": "advanced", "tokens":
+   ["00","<hex>",...]} - two-digit lowercase hex per byte, tokens in
+   vec order. 1 = written, 0 = I/O failure (caller reports). */
+int tokens_write_tok(const char *path, const TokenSet *ts);
+
 #endif /* NDRC_TOKENS_H */

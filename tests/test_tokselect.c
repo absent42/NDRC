@@ -4,6 +4,8 @@
 #include "test.h"
 #include "../src/tokselect.h"
 
+#include <stdlib.h>
+
 static Vec_Str *strs1(Arena *a, const char *s)
 {
     Vec_Str *v = vec_new_Str(a);
@@ -280,6 +282,55 @@ TEST(verify_catches_wrong_table)
     }
 }
 
+static void scratch_path(char *buf, size_t bufsz, const char *filename)
+{
+    const char *dir = getenv("TMPDIR");
+    if (dir == NULL) dir = getenv("TEMP");
+    if (dir == NULL) dir = getenv("TMP");
+    if (dir == NULL) dir = ".";
+    snprintf(buf, bufsz, "%s/%s", dir, filename);
+}
+
+TEST(write_tok_roundtrip)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts, *loaded;
+    char tok[512], fake_input[512];
+    const char *probed;
+    size_t i;
+
+    add_msg(a, adv->messages, "WATERWATERWATERWATER EVERYWHEREEVERYWHERE");
+    ts = tokselect_run(a, d, adv, 0);
+    CHECK(vec_len_Str(ts->tokens) >= 2);
+
+    scratch_path(tok, sizeof tok, "ndrc_tsel_rt.tok");
+    scratch_path(fake_input, sizeof fake_input, "ndrc_tsel_rt.json");
+    remove(tok);
+    CHECK(tokens_probe_override(a, fake_input) == NULL);
+
+    CHECK_INT(tokens_write_tok(tok, ts), 1);
+    probed = tokens_probe_override(a, fake_input);
+    CHECK(probed != NULL);
+
+    loaded = tokens_load_override(a, d, fake_input, NULL);
+    CHECK(loaded != NULL);
+    if (loaded != NULL) {
+        CHECK_INT((long)vec_len_Str(loaded->tokens),
+                  (long)vec_len_Str(ts->tokens));
+        for (i = 0; i < vec_len_Str(ts->tokens) &&
+                    i < vec_len_Str(loaded->tokens); i++) {
+            Str *p = vec_at_Str(ts->tokens, i);
+            Str *q = vec_at_Str(loaded->tokens, i);
+            CHECK(str_len(p) == str_len(q) &&
+                  memcmp(str_bytes(p), str_bytes(q), str_len(p)) == 0);
+        }
+        CHECK_INT(loaded->advanced, 1);
+    }
+    remove(tok);
+}
+
 int main(void)
 {
     RUN(parse_literal_only);
@@ -295,5 +346,6 @@ int main(void)
     RUN(select_caps_at_128);
     RUN(snapshot_verify_roundtrip_and_tamper);
     RUN(verify_catches_wrong_table);
+    RUN(write_tok_roundtrip);
     return test_summary("tokselect");
 }

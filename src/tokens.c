@@ -344,6 +344,30 @@ static const char *find_tok_override(Arena *a, const char *input_path)
     return NULL;
 }
 
+const char *tokens_probe_override(Arena *a, const char *json_input_path)
+{
+    return find_tok_override(a, json_input_path);
+}
+
+int tokens_write_tok(const char *path, const TokenSet *ts)
+{
+    FILE *f = fopen(path, "wb");
+    size_t i, j;
+
+    if (f == NULL) return 0;
+    fputs("{\"compression\": \"advanced\", \"tokens\": [", f);
+    for (i = 0; i < vec_len_Str(ts->tokens); i++) {
+        Str *t = vec_at_Str(ts->tokens, i);
+        const unsigned char *b = str_bytes(t);
+        if (i > 0) fputc(',', f);
+        fputc('"', f);
+        for (j = 0; j < str_len(t); j++) fprintf(f, "%02x", b[j]);
+        fputc('"', f);
+    }
+    fputs("]}", f);
+    return fclose(f) == 0;
+}
+
 TokenSet *tokens_load_override(Arena *a, Diag *d, const char *json_input_path,
                                 const char **out_resolved_path)
 {
