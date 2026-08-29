@@ -8,7 +8,7 @@ by a JSON file on disk; ndrc runs both stages in one process by
 default, and also exposes each stage on its own for tooling that wants
 the JSON intermediate directly.
 
-Every command prints one banner line (`NDRC 0.1` or `NDRC 0.1
+Every command prints one banner line (`NDRC 0.2` or `NDRC 0.2
 --to-json`/`--from-json`) before anything else; that line is omitted
 from the examples below.
 
