@@ -499,3 +499,122 @@ int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
     arena_free(scratch);
     return ok;
 }
+
+Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
+                            TokenSet *ts, int classic_mode, long *savings)
+{
+    Vec_Str *strings = corpus_strings(a, adv);
+    Vec_Str *final_tokens = vec_new_Str(a);
+    long cur, original = 0, encoded = 0;
+    size_t i;
+    int sweep;
+
+    *savings = 0;
+    for (i = 0; i < vec_len_Str(ts->tokens); i++)
+        vec_push_Str(final_tokens, vec_at_Str(ts->tokens, i));
+
+    /* Prune entries 1..n: drop when removal shrinks text+table.
+       Sequential pass-1 savings are the wrong metric here. */
+    cur = tokselect_parse_total(a, strings, final_tokens);
+    for (sweep = 0; sweep < 2; sweep++) {
+        int removed = 0;
+        long j;
+        for (j = (long)vec_len_Str(final_tokens) - 1; j >= 1; j--) {
+            Str *tok = vec_at_Str(final_tokens, (size_t)j);
+            Vec_Str *trial = vec_without(a, final_tokens, (size_t)j);
+            long tot = tokselect_parse_total(a, strings, trial);
+            if (tot - cur < (long)str_len(tok)) {
+                diag_verbose(d, "Optimal encoder: dropped token [%s].",
+                             str_cstr(tok));
+                final_tokens = trial;
+                cur = tot;
+                removed = 1;
+            }
+        }
+        if (!removed) break;
+    }
+
+    /* Delimiters 128..255 address entry 0 plus 128 live tokens. */
+    if (vec_len_Str(final_tokens) > 129) {
+        diag_fatal(d, "Tokens file has too many tokens for optimal "
+                      "encoding (%lu; maximum is 128).",
+                   (unsigned long)(vec_len_Str(final_tokens) - 1));
+        return NULL;
+    }
+    diag_verbose(d, "Compression tokens used: %zu.",
+                 vec_len_Str(final_tokens));
+
+    if (classic_mode) {
+        Str *space = str_new(a);
+        str_push(space, ' ');
+        while (vec_len_Str(final_tokens) < 128)
+            vec_push_Str(final_tokens, space);
+        diag_verbose(d, "Filling tokens table up to 128 tokens for "
+                        "classic mode compatibility.");
+    }
+
+    {
+        TokIndex ix;
+        long *dp;
+        Str **choice;
+        const Vec_Message *tabs[4];
+        size_t maxlen = 0, t, k;
+
+        tokindex_build(a, &ix, final_tokens);
+        for (i = 0; i < vec_len_Str(strings); i++)
+            if (str_len(vec_at_Str(strings, i)) > maxlen)
+                maxlen = str_len(vec_at_Str(strings, i));
+        dp = arena_alloc(a, (maxlen + 1) * sizeof(*dp));
+        choice = arena_alloc(a, (maxlen + 1) * sizeof(*choice));
+
+        compressable_tables(adv, tabs);
+        for (t = 0; t < 4; t++) {
+            for (k = 0; k < vec_len_Message(tabs[t]); k++) {
+                Message *m = vec_at_Message(tabs[t], k);
+                const unsigned char *s = str_bytes(m->Text);
+                size_t n = str_len(m->Text), pos;
+                Str *enc = str_new(a);
+                long ii;
+
+                original += (long)n;
+                dp[n] = 0;
+                choice[n] = NULL;
+                for (ii = (long)n - 1; ii >= 0; ii--) {
+                    long best = dp[ii + 1] + 1;
+                    Str *pick = NULL;   /* ties keep the literal */
+                    const Vec_Str *bucket = ix.by_first[s[ii]];
+                    size_t bj;
+                    for (bj = 0; bucket != NULL &&
+                                 bj < vec_len_Str(bucket); bj++) {
+                        Str *tok = vec_at_Str(bucket, bj);
+                        size_t tl = str_len(tok);
+                        if (tl <= n - (size_t)ii &&
+                            memcmp(s + ii, str_bytes(tok), tl) == 0) {
+                            long v = dp[ii + (long)tl] + 1;
+                            if (v < best) { best = v; pick = tok; }
+                        }
+                    }
+                    dp[ii] = best;
+                    choice[ii] = pick;
+                }
+                for (pos = 0; pos < n; ) {
+                    Str *tok = choice[pos];
+                    if (tok == NULL) {
+                        str_push(enc, (char)s[pos]);
+                        pos++;
+                    } else {
+                        size_t j2;
+                        for (j2 = 0; j2 < vec_len_Str(final_tokens); j2++)
+                            if (vec_at_Str(final_tokens, j2) == tok) break;
+                        str_push_u8(enc, (unsigned)(j2 + 127));
+                        pos += str_len(tok);
+                    }
+                }
+                encoded += (long)str_len(enc);
+                m->Text = enc;
+            }
+        }
+    }
+    *savings = original - encoded;
+    return final_tokens;
+}

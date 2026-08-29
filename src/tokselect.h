@@ -39,4 +39,17 @@ int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
 long tokselect_parse_total(Arena *a, const Vec_Str *strings,
                            const Vec_Str *tokens);
 
+/* Optimal-path counterpart of tokens_compress: prunes ts->tokens under
+   the optimal-parse metric (2 bounded sweeps, last-to-first), then
+   DP-encodes every compressable message in place. References are byte
+   j+127 where j indexes the returned final_tokens (entry 0 included) -
+   the byte contract tokselect_verify decodes. classic_mode pads the
+   table to 128 entries with literal spaces, like the sequential path.
+   *savings = original minus encoded text bytes. Returns NULL after
+   diag_fatal when more than 128 live tokens survive pruning (the
+   reference space is 128..255); only reachable via a hand-written
+   marked .tok - tokselect_run enforces the cap itself. */
+Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
+                            TokenSet *ts, int classic_mode, long *savings);
+
 #endif /* NDRC_TOKSELECT_H */

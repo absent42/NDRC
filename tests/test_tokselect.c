@@ -399,6 +399,184 @@ TEST(write_tok_roundtrip)
     remove(tok);
 }
 
+/* Collects the four compressable tables' texts, snapshot-side. */
+static Vec_Str *snapshot_strings(Arena *a, const Vec_MsgTable *snap)
+{
+    Vec_Str *out = vec_new_Str(a);
+    size_t t, k;
+
+    for (t = 0; t < 4; t++) {
+        Vec_Message *tab = vec_at_MsgTable(snap, t);
+        for (k = 0; k < vec_len_Message(tab); k++)
+            vec_push_Str(out, vec_at_Message(tab, k)->Text);
+    }
+    return out;
+}
+
+/* Hand-builds an advanced TokenSet from latin-1 token strings. */
+static TokenSet *ts_new(Arena *a, const char *t1, const char *t2)
+{
+    TokenSet *ts = arena_calloc(a, sizeof(*ts));
+    Str *zero = str_new(a);
+
+    ts->compression = "advanced";
+    ts->advanced = 1;
+    ts->has_tokens = 1;
+    ts->optimal_encode = 1;
+    ts->tokens = vec_new_Str(a);
+    str_push_u8(zero, 0);
+    vec_push_Str(ts->tokens, zero);
+    if (t1 != NULL) vec_push_Str(ts->tokens, str_from(a, t1));
+    if (t2 != NULL) vec_push_Str(ts->tokens, str_from(a, t2));
+    return ts;
+}
+
+TEST(compress_optimal_beats_sequential_shape)
+{
+    /* AB before ABC: sequential provably emits X{AB}CY (4/unit);
+       the DP must emit X{ABC}Y (3/unit), dropping AB as net-negative.
+       Hand-traced: with both tokens, parse is 9; without AB, still 9,
+       so AB (len 2) is pruned; without ABC, 12 - ABC survives. */
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "AB", "ABC");
+    Vec_MsgTable *before;
+    Vec_Str *final_tokens;
+    long savings = 0;
+    Str *enc;
+    static const unsigned char want[9] =
+        { 'X', 0x80, 'Y', 'X', 0x80, 'Y', 'X', 0x80, 'Y' };
+
+    add_msg(a, adv->messages, "XABCYXABCYXABCY");
+    before = tokselect_snapshot(a, adv);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+
+    CHECK(final_tokens != NULL);
+    CHECK_INT((long)vec_len_Str(final_tokens), 2);   /* 0x00 + ABC */
+    enc = vec_at_Message(adv->messages, 0)->Text;
+    CHECK_INT((long)str_len(enc), 9);
+    CHECK(memcmp(str_bytes(enc), want, 9) == 0);
+    CHECK_INT(savings, 6);                            /* 15 - 9 */
+    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+
+    /* Spec's tamper bullet, against THIS encoder's output. */
+    str_push(vec_at_Message(adv->messages, 0)->Text, 'Z');
+    CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+}
+
+TEST(compress_cost_matches_parse_total)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "TH", "THE ");
+    Vec_MsgTable *before;
+    Vec_Str *final_tokens, *orig;
+    long savings = 0, encoded = 0, t;
+    size_t k;
+
+    add_msg(a, adv->messages, "THE CAT AND THE DOG AND THE FOX");
+    add_msg(a, adv->locations, "THE THIN PATH THREADS THE HILL");
+    before = tokselect_snapshot(a, adv);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    CHECK(final_tokens != NULL);
+
+    orig = snapshot_strings(a, before);
+    for (k = 0; k < vec_len_Message(adv->messages); k++)
+        encoded += (long)str_len(vec_at_Message(adv->messages, k)->Text);
+    for (k = 0; k < vec_len_Message(adv->locations); k++)
+        encoded += (long)str_len(vec_at_Message(adv->locations, k)->Text);
+    t = tokselect_parse_total(a, orig, final_tokens);
+    CHECK_INT(encoded, t);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+}
+
+TEST(compress_prunes_unused_token)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "ZZZZZZ", NULL);
+    Vec_Str *final_tokens;
+    long savings = 99;
+
+    add_msg(a, adv->messages, "AAAA");
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    CHECK(final_tokens != NULL);
+    CHECK_INT((long)vec_len_Str(final_tokens), 1);   /* entry 0 only */
+    CHECK_INT(savings, 0);
+}
+
+TEST(compress_classic_padding)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "MN", NULL);
+    Vec_Str *final_tokens;
+    long savings = 0;
+    size_t k;
+
+    add_msg(a, adv->messages, "MNMNMNMNMNMN");
+    final_tokens = tokselect_compress(a, d, adv, ts, 1, &savings);
+    CHECK(final_tokens != NULL);
+    CHECK_INT((long)vec_len_Str(final_tokens), 128);
+    /* Fillers are literal single spaces and are never referenced:
+       the encoded text contains only 'MN' references. */
+    for (k = 2; k < 128; k++) {
+        Str *t = vec_at_Str(final_tokens, k);
+        CHECK(str_len(t) == 1 && str_bytes(t)[0] == ' ');
+    }
+}
+
+TEST(compress_guard_trips_past_128_tokens)
+{
+    /* 135 independent net-positive digraphs (the cap-test corpus
+       shape): prune keeps them all, 136 entries > 129 - the pinned
+       fatal fires and NULL comes back, not a wrapped delimiter. */
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = arena_calloc(a, sizeof(*ts));
+    Vec_Str *final_tokens;
+    long savings = 0;
+    char msg[9], tokbuf[3], sinkpath[512];
+    int i;
+    FILE *sink;
+
+    /* tmpfile() hits the drive root on Windows and often fails
+       unelevated; a scratch-path file is deterministic. */
+    scratch_path(sinkpath, sizeof sinkpath, "ndrc_tsel_diag.txt");
+    sink = fopen(sinkpath, "wb");
+    CHECK(sink != NULL);
+    if (sink != NULL) diag_set_stream(d, sink);   /* keep output pristine */
+    ts->compression = "advanced";
+    ts->advanced = 1;
+    ts->has_tokens = 1;
+    ts->optimal_encode = 1;
+    ts->tokens = vec_new_Str(a);
+    {
+        Str *zero = str_new(a);
+        str_push_u8(zero, 0);
+        vec_push_Str(ts->tokens, zero);
+    }
+    for (i = 0; i < 135; i++) {
+        char x = (char)('A' + i / 26), y = (char)('a' + i % 26);
+        msg[0] = x; msg[1] = y; msg[2] = x; msg[3] = y;
+        msg[4] = x; msg[5] = y; msg[6] = x; msg[7] = y;
+        msg[8] = '\0';
+        add_msg(a, adv->messages, msg);
+        tokbuf[0] = x; tokbuf[1] = y; tokbuf[2] = '\0';
+        vec_push_Str(ts->tokens, str_from(a, tokbuf));
+    }
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    CHECK(final_tokens == NULL);
+    CHECK(diag_error_count(d) > 0);
+    if (sink != NULL) fclose(sink);
+    remove(sinkpath);
+}
+
 int main(void)
 {
     RUN(parse_literal_only);
@@ -417,5 +595,10 @@ int main(void)
     RUN(loader_marker_gate);
     RUN(selector_result_is_marked);
     RUN(write_tok_roundtrip);
+    RUN(compress_optimal_beats_sequential_shape);
+    RUN(compress_cost_matches_parse_total);
+    RUN(compress_prunes_unused_token);
+    RUN(compress_classic_padding);
+    RUN(compress_guard_trips_past_128_tokens);
     return test_summary("tokselect");
 }
