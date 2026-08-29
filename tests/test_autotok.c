@@ -96,6 +96,12 @@ static int log_contains(const char *logpath, const char *needle)
     return found;
 }
 
+static void write_text(const char *path, const char *content)
+{
+    FILE *f = fopen(path, "wb");
+    if (f != NULL) { fputs(content, f); fclose(f); }
+}
+
 TEST(auto_tokens_beats_builtin)
 {
     char out0[512], out1[512], logp[512], args[1600];
@@ -137,6 +143,9 @@ TEST(tok_tee_roundtrips_to_identical_ddb)
     CHECK_INT(run_ndrc(args, logp), 0);
     CHECK(file_size(tok) > 0);
 
+    /* Phase 2: the tee records its encoder. */
+    CHECK(log_contains(tok, "\"encoder\": \"optimal\""));
+
     /* No flag: the override lookup finds the tee and must reproduce
        the identical DDB. */
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out2);
@@ -173,10 +182,45 @@ TEST(auto_tokens_overrides_tok_with_notice)
     remove(tok);
 }
 
+TEST(marker_engages_optimal_encoder)
+{
+    /* Same token table, marker on vs off. Tokens ordered so the
+       sequential encoder provably loses: "th" (7468) before "the"
+       (746865) makes every "the" cost 2 bytes sequentially but 1
+       optimally, and the fixture's prose is rich in "the". */
+    char dsf[512], tok[512], out_seq[512], out_opt[512], logp[512];
+    char args[1600];
+
+    scratch_path(dsf, sizeof dsf, "at_mk.DSF");
+    scratch_path(tok, sizeof tok, "at_mk.tok");
+    scratch_path(out_seq, sizeof out_seq, "at_mk_seq.ddb");
+    scratch_path(out_opt, sizeof out_opt, "at_mk_opt.ddb");
+    scratch_path(logp, sizeof logp, "at_mk_log.txt");
+    remove(tok);
+    CHECK(copy_file(FIXTURE, dsf));
+
+    write_text(tok, "{\"compression\": \"advanced\", "
+                    "\"tokens\": [\"00\",\"7468\",\"746865\"]}");
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out_seq);
+    CHECK_INT(run_ndrc(args, logp), 0);
+
+    write_text(tok, "{\"compression\": \"advanced\", "
+                    "\"encoder\": \"optimal\", "
+                    "\"tokens\": [\"00\",\"7468\",\"746865\"]}");
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out_opt);
+    CHECK_INT(run_ndrc(args, logp), 0);
+
+    CHECK(file_size(out_seq) > 0);
+    CHECK(file_size(out_opt) > 0);
+    CHECK(file_size(out_opt) < file_size(out_seq));
+    remove(tok);
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
     RUN(tok_tee_roundtrips_to_identical_ddb);
     RUN(auto_tokens_overrides_tok_with_notice);
+    RUN(marker_engages_optimal_encoder);
     return test_summary("autotok");
 }
