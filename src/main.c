@@ -102,8 +102,12 @@ static int drb_match_option(Arena *a, BackendOptions *opts, const char *raw_arg)
         strncmp(raw_arg, "--tok=", 6) == 0) {
         opts->tok_tee = 1;
         opts->auto_tokens = 1;
-        if (strncmp(raw_arg, "--tok=", 6) == 0)
-            opts->tok_tee_path = raw_arg + 6;
+        if (strncmp(raw_arg, "--tok=", 6) == 0) {
+            const char *remainder = raw_arg + 6;
+            /* empty "--tok=" behaves like bare --tok */
+            if (*remainder != '\0')
+                opts->tok_tee_path = remainder;
+        }
         return 1;
     }
 

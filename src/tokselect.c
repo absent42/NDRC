@@ -316,6 +316,8 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
 
     for (i = 0; i < vec_len_Cand(order); i++) {
         Cand *c = vec_at_Cand(order, i);
+        /* count*(len-1) fits long everywhere: overflow would need a
+           ~190MB text corpus; DDB text is bounded far below 64K. */
         long proxy = c->count * ((long)c->len - 1) - (long)c->len;
         if (c->count >= 2 && proxy > 0) heap_push(a, &heap, proxy, c->idx);
     }

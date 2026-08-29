@@ -144,8 +144,11 @@ both flags - the written `.tok` sits beside the input where the normal
 override lookup picks it up, and stock DRC accepts the same file.
 
 On targets other than NEXTDAAD, selected tokens never contain `_` or
-`@` (object-name and print placeholders; behaviour of pre-DRC
-interpreters for tokens spanning them is unverified).
+`@` (object-name and print placeholders): on the original ZX Spectrum
+interpreter a `_` arriving from inside a token prints literally
+instead of substituting the object name, so such tokens would silently
+change the game's output. NEXTDAAD expands tokens byte-transparently
+and has no such restriction.
 
 ### `--json[=path]`
 
