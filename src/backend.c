@@ -553,10 +553,16 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        transcript's order exactly. */
     compressed_text_offset = ts->has_tokens ? addr : 0;
     print_map_line(opts->verbose, "Tokens            ", compressed_text_offset);
-    if (opts->auto_tokens) pre_texts = tokselect_snapshot(a, adv);
+    if (ts->optimal_encode) pre_texts = tokselect_snapshot(a, adv);
     {
-        Vec_Str *final_tokens = tokens_compress(a, d, adv, ts, classic, &text_savings);
-        if (opts->auto_tokens) {
+        Vec_Str *final_tokens;
+        if (ts->optimal_encode && opts->verbose)
+            printf("Optimal-parse text encoding.\n");
+        final_tokens = ts->optimal_encode
+            ? tokselect_compress(a, d, adv, ts, classic, &text_savings)
+            : tokens_compress(a, d, adv, ts, classic, &text_savings);
+        if (final_tokens == NULL) return diag_exit_code(d);
+        if (ts->optimal_encode) {
             if (!tokselect_verify(pre_texts, adv, final_tokens)) {
                 diag_fatal(d, "auto-tokens self-check failed: compressed "
                               "text does not decode back to source");
