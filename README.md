@@ -33,6 +33,8 @@ grammar and option reference.
 
     ndrc NEXTDAAD EN game.DSF -auto-tokens
 
+NDRC v0.2+ offers enhanced text compression compared to DRC, enabling DAAD DDBs to fit more game text into the hard limit database sizes. This is compatible with existing DAAD interpreters, just requiring an extra CLI flag when compiling your game with NDRC.
+
 DRC compresses text with a fixed token table per language - the same
 128 English digraphs for every English game ever compiled. With
 `-auto-tokens`, NDRC instead selects up to 128 tokens from the
