@@ -27,6 +27,10 @@ typedef struct {
                               unrecognised value, each with different
                               (or empty) compressable-table behaviour -
                               a single bool cannot distinguish those. */
+    int optimal_encode;  /* 1 = optimal-parse encoding: set by
+                            tokselect_run, or by a .tok carrying
+                            "encoder": "optimal" with compression
+                            "advanced" - never otherwise. */
 } TokenSet;
 
 /* Parses the builtin table for `language` (tokens_en.h/es.h/de.h/pt.h/

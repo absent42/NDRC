@@ -422,6 +422,7 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
     ts->compression = "advanced";
     ts->advanced = 1;
     ts->has_tokens = 1;
+    ts->optimal_encode = 1;
     ts->tokens = vec_new_Str(a);
     {
         Str *zero = str_new(a);

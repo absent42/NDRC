@@ -291,6 +291,72 @@ static void scratch_path(char *buf, size_t bufsz, const char *filename)
     snprintf(buf, bufsz, "%s/%s", dir, filename);
 }
 
+/* Writes content to path; test helper for hand-crafted .tok files. */
+static void write_text_file(const char *path, const char *content)
+{
+    FILE *f = fopen(path, "wb");
+    CHECK(f != NULL);
+    if (f == NULL) return;
+    fputs(content, f);
+    fclose(f);
+}
+
+/* Loads a .tok next to a fake input path; returns the TokenSet. */
+static TokenSet *load_tok_text(Arena *a, Diag *d, const char *json)
+{
+    char tok[512], fake[512];
+
+    scratch_path(tok, sizeof tok, "ndrc_tsel_mk.tok");
+    scratch_path(fake, sizeof fake, "ndrc_tsel_mk.json");
+    write_text_file(tok, json);
+    {
+        TokenSet *ts = tokens_load_override(a, d, fake, NULL);
+        remove(tok);
+        return ts;
+    }
+}
+
+TEST(loader_marker_gate)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    TokenSet *ts;
+
+    ts = load_tok_text(a, d, "{\"compression\": \"advanced\", "
+        "\"encoder\": \"optimal\", \"tokens\": [\"00\",\"4142\"]}");
+    CHECK(ts != NULL && ts->optimal_encode == 1);
+
+    ts = load_tok_text(a, d, "{\"compression\": \"advanced\", "
+        "\"tokens\": [\"00\",\"4142\"]}");
+    CHECK(ts != NULL && ts->optimal_encode == 0);
+
+    /* Gate: marker without advanced compression stays sequential. */
+    ts = load_tok_text(a, d, "{\"compression\": \"basic\", "
+        "\"encoder\": \"optimal\", \"tokens\": [\"00\",\"4142\"]}");
+    CHECK(ts != NULL && ts->optimal_encode == 0);
+
+    ts = load_tok_text(a, d, "{\"compression\": \"none\", "
+        "\"encoder\": \"optimal\", \"tokens\": [\"00\",\"4142\"]}");
+    CHECK(ts != NULL && ts->optimal_encode == 0);
+
+    /* Non-string or unknown values are ignored, not fatal. */
+    ts = load_tok_text(a, d, "{\"compression\": \"advanced\", "
+        "\"encoder\": \"fast\", \"tokens\": [\"00\",\"4142\"]}");
+    CHECK(ts != NULL && ts->optimal_encode == 0);
+}
+
+TEST(selector_result_is_marked)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts;
+
+    add_msg(a, adv->messages, "MNMNMNMNMNMN");
+    ts = tokselect_run(a, d, adv, 0);
+    CHECK_INT(ts->optimal_encode, 1);
+}
+
 TEST(write_tok_roundtrip)
 {
     Arena *a = arena_new(0);
@@ -327,6 +393,8 @@ TEST(write_tok_roundtrip)
                   memcmp(str_bytes(p), str_bytes(q), str_len(p)) == 0);
         }
         CHECK_INT(loaded->advanced, 1);
+        /* Phase 2: the tee is marked and the marker round-trips. */
+        CHECK_INT(loaded->optimal_encode, 1);
     }
     remove(tok);
 }
@@ -346,6 +414,8 @@ int main(void)
     RUN(select_caps_at_128);
     RUN(snapshot_verify_roundtrip_and_tamper);
     RUN(verify_catches_wrong_table);
+    RUN(loader_marker_gate);
+    RUN(selector_result_is_marked);
     RUN(write_tok_roundtrip);
     return test_summary("tokselect");
 }

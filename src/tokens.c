@@ -172,6 +172,18 @@ static TokenSet *tokens_load_from_json_bytes(Arena *a, Diag *d,
     ts->compression = arena_strndup(a, comp_v->str, comp_v->str_len);
     ts->advanced = (strcmp(ts->compression, "advanced") == 0);
     ts->has_tokens = (strcmp(ts->compression, "none") != 0);   /* drb.php:1909 */
+    /* "encoder": "optimal" engages the optimal-parse encoder, but only
+       for advanced compression: the optimal path's table set is the
+       advanced four-table order, and a "none" marker would contradict
+       the has_tokens header contract. Anything else is ignored, not
+       fatal - the tolerance DRC shows fields it does not know. */
+    {
+        JsonValue *enc_v = json_get(r.root, "encoder");
+        ts->optimal_encode = ts->advanced && enc_v != NULL &&
+                             enc_v->type == JSON_STRING &&
+                             enc_v->str_len == 7 &&
+                             strncmp(enc_v->str, "optimal", 7) == 0;
+    }
     ts->tokens = vec_new_Str(a);
 
     for (i = 0; i < vec_len_JsonValue(tokens_v->items); i++) {
@@ -355,7 +367,9 @@ int tokens_write_tok(const char *path, const TokenSet *ts)
     size_t i, j;
 
     if (f == NULL) return 0;
-    fputs("{\"compression\": \"advanced\", \"tokens\": [", f);
+    fputs(ts->optimal_encode
+          ? "{\"compression\": \"advanced\", \"encoder\": \"optimal\", \"tokens\": ["
+          : "{\"compression\": \"advanced\", \"tokens\": [", f);
     for (i = 0; i < vec_len_Str(ts->tokens); i++) {
         Str *t = vec_at_Str(ts->tokens, i);
         const unsigned char *b = str_bytes(t);
