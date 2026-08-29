@@ -115,6 +115,8 @@ Case-insensitive (upper-cased before matching), dash-prefixed.
 | `-p` | Force padding. Cannot combine with `-np`. |
 | `-x` | Dump TX (text) sections to a separate `0.XMB` file instead of embedding them in the database. |
 | `-b=<addr>` | Override the target's default base address. Decimal, or hex with a `0x`/`0X` prefix. Must resolve to 1-0xFFFF. |
+| `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Output DDBs remain format-identical and decode on every DAAD interpreter. |
+| `--tok[=path]` | Write the selected token table as a standard `.tok` file (bare form: `<input>.tok`, where the normal override lookup finds it on the next run). Implies `-auto-tokens`. Like `--json=`, a `--tok=` argument is never claimed as the output name. |
 
 An unrecognised option, in either set, stops compilation immediately
 with an error naming it. A stray extra positional argument is not an
@@ -124,6 +126,26 @@ see above), and a second dotted/dashed positional is likewise just
 whatever the grammar above already assigns it to. The database-writing
 stage's own standalone CLI (`--from-json`) is the one place a second
 stray positional is rejected outright - see below.
+
+## Per-game token selection
+
+`-auto-tokens` replaces the builtin language token table with up to 128
+tokens chosen from the compiling game's own text, then compresses with
+the normal sequential encoder. On real English games this measured 6.7%
+to 13.7% off compressed text+table against the builtin table. Selection
+is deterministic: the same source always produces the same table.
+
+Without the flag, output is byte-identical to DRC, as always. A
+compile with the flag self-checks: every compressed message is decoded
+back and compared against the source text before the DDB is written.
+
+The freeze workflow: compile once with `-auto-tokens --tok`, then drop
+both flags - the written `.tok` sits beside the input where the normal
+override lookup picks it up, and stock DRC accepts the same file.
+
+On targets other than NEXTDAAD, selected tokens never contain `_` or
+`@` (object-name and print placeholders; behaviour of pre-DRC
+interpreters for tokens spanning them is unverified).
 
 ### `--json[=path]`
 
