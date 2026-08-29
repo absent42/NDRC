@@ -90,7 +90,24 @@ static const char *defer_option_error(Arena *a, const char *fmt,
    when it matches none - the callers differ only in what they do then. */
 static int drb_match_option(Arena *a, BackendOptions *opts, const char *raw_arg)
 {
-    char *opt_upper = str_upper_ascii(a, raw_arg);
+    char *opt_upper;
+
+    /* NDRC extensions, case-sensitive - no DRC counterpart. --tok
+       implies -auto-tokens: a tee of an unselected table says nothing. */
+    if (strcmp(raw_arg, "-auto-tokens") == 0) {
+        opts->auto_tokens = 1;
+        return 1;
+    }
+    if (strcmp(raw_arg, "--tok") == 0 ||
+        strncmp(raw_arg, "--tok=", 6) == 0) {
+        opts->tok_tee = 1;
+        opts->auto_tokens = 1;
+        if (strncmp(raw_arg, "--tok=", 6) == 0)
+            opts->tok_tee_path = raw_arg + 6;
+        return 1;
+    }
+
+    opt_upper = str_upper_ascii(a, raw_arg);
 
     if (strcmp(opt_upper, "-V") == 0) {
         opts->verbose = 1;
@@ -639,6 +656,11 @@ static int join_is_json_opt(const char *arg)
     return strcmp(arg, "--json") == 0 || strncmp(arg, "--json=", 7) == 0;
 }
 
+static int join_is_tok_opt(const char *arg)
+{
+    return strcmp(arg, "--tok") == 0 || strncmp(arg, "--tok=", 6) == 0;
+}
+
 /* The join's own options: --json[=path] first (join-specific), then the
    drb set through drb_match_option so the join and --from-json share
    one matcher and one set of texts. Returns 1 when routed. */
@@ -738,18 +760,18 @@ static int parse_front_cli(Arena *a, Diag *d, char **args, int argc_eff,
        The heuristic tests for a dot ONLY - a dashed argument carrying
        one is claimed too (live-verified: `drf.exe NEXTDAAD g.dsf -v3.5`
        writes a file literally named "-v3.5"). The join's own
-       `--json=<path>` is the single carve-out from that: it always
-       carries a dot, and letting it become the DDB name would make the
-       tee silently redirect the compile it is supposed to leave
-       untouched. --to-json (bopts NULL) keeps the heuristic exactly as
-       drf.pas has it. The carve-out only declines the slot: a
+       `--json=<path>` and `--tok=<path>` are the carve-outs from that:
+       both always carry a dot, and letting either become the DDB name
+       would make its tee silently redirect the compile it is supposed
+       to leave untouched. --to-json (bopts NULL) keeps the heuristic
+       exactly as drf.pas has it. The carve-out only declines the slot: a
        `--json=x.json out.ddb` pair leaves the slot unclaimed, so
        out.ddb reaches the loop below as the symbol list - drf's own
        grammar, where the heuristic looks at the FIRST post-input
        argument only. */
     aux = pstr(args, argc_eff, next_param);
     if (strchr(aux, '.') != NULL &&
-        !(bopts != NULL && join_is_json_opt(aux))) {
+        !(bopts != NULL && (join_is_json_opt(aux) || join_is_tok_opt(aux)))) {
         fc->output_name = aux;
         next_param++;
     }

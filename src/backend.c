@@ -24,6 +24,7 @@
 #include "str.h"
 #include "targets.h"
 #include "tokens.h"
+#include "tokselect.h"
 #include "vec.h"
 #include "back/emit.h"
 #include "back/emit_hdr.h"
@@ -129,6 +130,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     JsonResult jr;
     Adventure *adv;
     TokenSet *ts;
+    Vec_MsgTable *pre_texts = NULL;
     long addr;
     Str *out;
     long previous_address;
@@ -405,18 +407,31 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     {
         int errors_before = diag_error_count(d);
         const char *resolved_path = NULL;
-        TokenSet *override = tokens_load_override(a, d, opts->input_name, &resolved_path);
-        if (override != NULL) {
-            ts = override;
-            if (opts->verbose) {
-                printf("Loading tokens from %s.\n", resolved_path);
+        TokenSet *override = NULL;
+
+        if (opts->auto_tokens) {
+            const char *bypassed = tokens_probe_override(a, opts->input_name);
+            if (bypassed != NULL) {
+                printf("Warning: -auto-tokens overrides tokens file %s.\n",
+                       bypassed);
             }
-        } else if (diag_error_count(d) > errors_before) {
-            return diag_exit_code(d);   /* override found but malformed */
+            if (opts->verbose) printf("Auto-selecting compression tokens.\n");
+            ts = tokselect_run(a, d, adv,
+                               strcmp(target->name, "NEXTDAAD") != 0);
         } else {
-            ts = tokens_load_builtin(a, d, language);
-            if (ts == NULL) return diag_exit_code(d);
-            if (opts->verbose) printf("Loading default compression tokens for '%s'.\n", language);
+            override = tokens_load_override(a, d, opts->input_name, &resolved_path);
+            if (override != NULL) {
+                ts = override;
+                if (opts->verbose) {
+                    printf("Loading tokens from %s.\n", resolved_path);
+                }
+            } else if (diag_error_count(d) > errors_before) {
+                return diag_exit_code(d);   /* override found but malformed */
+            } else {
+                ts = tokens_load_builtin(a, d, language);
+                if (ts == NULL) return diag_exit_code(d);
+                if (opts->verbose) printf("Loading default compression tokens for '%s'.\n", language);
+            }
         }
     }
 
@@ -538,8 +553,26 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        transcript's order exactly. */
     compressed_text_offset = ts->has_tokens ? addr : 0;
     print_map_line(opts->verbose, "Tokens            ", compressed_text_offset);
+    if (opts->auto_tokens) pre_texts = tokselect_snapshot(a, adv);
     {
         Vec_Str *final_tokens = tokens_compress(a, d, adv, ts, classic, &text_savings);
+        if (opts->auto_tokens) {
+            if (!tokselect_verify(pre_texts, adv, final_tokens)) {
+                diag_fatal(d, "auto-tokens self-check failed: compressed "
+                              "text does not decode back to source");
+                return diag_exit_code(d);
+            }
+            if (opts->tok_tee) {
+                const char *tee = opts->tok_tee_path != NULL
+                                  ? opts->tok_tee_path
+                                  : replace_extension(a, opts->input_name, "tok");
+                if (!tokens_write_tok(tee, ts)) {
+                    diag_fatal(d, "Can't create tokens file %s", tee);
+                    return diag_exit_code(d);
+                }
+                if (opts->verbose) printf("Tokens written to %s.\n", tee);
+            }
+        }
         tokens_emit(out, final_tokens, &addr);
     }
     layout_pad(out, &addr, target);

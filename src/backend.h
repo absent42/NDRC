@@ -24,6 +24,9 @@ typedef struct {
     int verbose, forced_classic, prepend_c64, prepend_plus3;
     int dump_to_xmb, forced_padding, forced_no_padding, forced_debug;
     long forced_base;           /* <0 = unset */
+    int auto_tokens;            /* -auto-tokens: select per-game tokens */
+    int tok_tee;                /* --tok seen (implies auto_tokens) */
+    const char *tok_tee_path;   /* --tok=path; NULL = derive <input>.tok */
     /* The caller's option-loop verdict. drb reports
        parseOptionalParameters' errors from its call site
        (drb.php:1769), after the Target line and the JSON decode, so a
