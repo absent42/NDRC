@@ -26,6 +26,7 @@ TEST(parse_literal_only)
     Arena *a = arena_new(0);
     CHECK_INT(tokselect_parse_total(a, strs1(a, "HELLO"), NULL), 5);
     CHECK_INT(tokselect_parse_total(a, strs1(a, ""), NULL), 0);
+    arena_free(a);
 }
 
 TEST(parse_token_reduces)
@@ -33,6 +34,7 @@ TEST(parse_token_reduces)
     Arena *a = arena_new(0);
     CHECK_INT(tokselect_parse_total(a, strs1(a, "ABABAB"),
                                     toks(a, "AB", NULL)), 3);
+    arena_free(a);
 }
 
 TEST(parse_is_optimal_not_greedy)
@@ -42,6 +44,7 @@ TEST(parse_is_optimal_not_greedy)
     Arena *a = arena_new(0);
     CHECK_INT(tokselect_parse_total(a, strs1(a, "XABCY"),
                                     toks(a, "AB", "ABC")), 3);
+    arena_free(a);
 }
 
 TEST(parse_picks_cheaper_cover)
@@ -51,6 +54,7 @@ TEST(parse_picks_cheaper_cover)
     Arena *a = arena_new(0);
     CHECK_INT(tokselect_parse_total(a, strs1(a, "AAAA"),
                                     toks(a, "AA", "AAA")), 2);
+    arena_free(a);
 }
 
 TEST(parse_token_longer_than_string)
@@ -58,6 +62,7 @@ TEST(parse_token_longer_than_string)
     Arena *a = arena_new(0);
     CHECK_INT(tokselect_parse_total(a, strs1(a, "AB"),
                                     toks(a, "ABCD", NULL)), 2);
+    arena_free(a);
 }
 
 static Adventure *adv_new(Arena *a)
@@ -113,6 +118,7 @@ TEST(select_finds_the_obvious_token)
     t = vec_at_Str(ts->tokens, 1);
     CHECK_INT((long)str_len(t), 2);
     CHECK(memcmp(str_bytes(t), "XY", 2) == 0);
+    arena_free(a);
 }
 
 TEST(select_is_deterministic)
@@ -131,6 +137,7 @@ TEST(select_is_deterministic)
     }
     CHECK(tokensets_equal(tokselect_run(a, d, adv, 0),
                           tokselect_run(a, d, adv, 0)));
+    arena_free(a);
 }
 
 TEST(select_orders_longest_first)
@@ -153,6 +160,7 @@ TEST(select_orders_longest_first)
         CHECK(str_len(vec_at_Str(ts->tokens, i)) <=
               str_len(vec_at_Str(ts->tokens, i - 1)));
     }
+    arena_free(a);
 }
 
 static int any_token_contains(const TokenSet *ts, unsigned char b)
@@ -180,6 +188,7 @@ TEST(select_placeholder_exclusion)
     }
     CHECK(any_token_contains(tokselect_run(a, d, adv1, 0), '_'));
     CHECK(!any_token_contains(tokselect_run(a, d, adv2, 1), '_'));
+    arena_free(a);
 }
 
 TEST(select_empty_and_tiny_input)
@@ -196,6 +205,7 @@ TEST(select_empty_and_tiny_input)
     add_msg(a, adv->messages, "A");        /* below min candidate len */
     ts = tokselect_run(a, d, adv, 0);
     CHECK_INT((long)vec_len_Str(ts->tokens), 1);
+    arena_free(a);
 }
 
 TEST(select_caps_at_128)
@@ -226,6 +236,7 @@ TEST(select_caps_at_128)
         CHECK(str_len(vec_at_Str(ts->tokens, k)) >= 2);
         CHECK(str_len(vec_at_Str(ts->tokens, k)) <= 12);
     }
+    arena_free(a);
 }
 
 TEST(snapshot_verify_roundtrip_and_tamper)
@@ -251,6 +262,7 @@ TEST(snapshot_verify_roundtrip_and_tamper)
     /* Tampered text must fail the check. */
     str_push(vec_at_Message(adv->messages, 0)->Text, 'Z');
     CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+    arena_free(a);
 }
 
 TEST(verify_catches_wrong_table)
@@ -280,6 +292,7 @@ TEST(verify_catches_wrong_table)
         vec_set_Str(final_tokens, 2, t1);
         CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
     }
+    arena_free(a);
 }
 
 static void scratch_path(char *buf, size_t bufsz, const char *filename)
@@ -343,6 +356,7 @@ TEST(loader_marker_gate)
     ts = load_tok_text(a, d, "{\"compression\": \"advanced\", "
         "\"encoder\": \"fast\", \"tokens\": [\"00\",\"4142\"]}");
     CHECK(ts != NULL && ts->optimal_encode == 0);
+    arena_free(a);
 }
 
 TEST(selector_result_is_marked)
@@ -355,6 +369,7 @@ TEST(selector_result_is_marked)
     add_msg(a, adv->messages, "MNMNMNMNMNMN");
     ts = tokselect_run(a, d, adv, 0);
     CHECK_INT(ts->optimal_encode, 1);
+    arena_free(a);
 }
 
 TEST(write_tok_roundtrip)
@@ -397,6 +412,7 @@ TEST(write_tok_roundtrip)
         CHECK_INT(loaded->optimal_encode, 1);
     }
     remove(tok);
+    arena_free(a);
 }
 
 /* Collects the four compressable tables' texts, snapshot-side. */
@@ -463,6 +479,7 @@ TEST(compress_optimal_beats_sequential_shape)
     /* Spec's tamper bullet, against THIS encoder's output. */
     str_push(vec_at_Message(adv->messages, 0)->Text, 'Z');
     CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+    arena_free(a);
 }
 
 TEST(compress_cost_matches_parse_total)
@@ -490,6 +507,7 @@ TEST(compress_cost_matches_parse_total)
     t = tokselect_parse_total(a, orig, final_tokens);
     CHECK_INT(encoded, t);
     CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+    arena_free(a);
 }
 
 TEST(compress_prunes_unused_token)
@@ -506,6 +524,7 @@ TEST(compress_prunes_unused_token)
     CHECK(final_tokens != NULL);
     CHECK_INT((long)vec_len_Str(final_tokens), 1);   /* entry 0 only */
     CHECK_INT(savings, 0);
+    arena_free(a);
 }
 
 TEST(compress_classic_padding)
@@ -528,6 +547,7 @@ TEST(compress_classic_padding)
         Str *t = vec_at_Str(final_tokens, k);
         CHECK(str_len(t) == 1 && str_bytes(t)[0] == ' ');
     }
+    arena_free(a);
 }
 
 TEST(compress_guard_trips_past_128_tokens)
@@ -575,6 +595,7 @@ TEST(compress_guard_trips_past_128_tokens)
     CHECK(diag_error_count(d) > 0);
     if (sink != NULL) fclose(sink);
     remove(sinkpath);
+    arena_free(a);
 }
 
 int main(void)
