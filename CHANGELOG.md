@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1 - 30/08/2026
+
+- New `-cols=40|80` option: overrides the exported `COLS` symbol for
+  NEXTDAAD 40-column text mode. Case-sensitive, NDRC extension.
+  Pair with the game issuing `GFX 1 18` at init. Any other value is
+  an "Invalid option" error. Without the flag, `COLS` is unchanged
+  (NEXTDAAD's builtin 80).
+
 ## v0.2 - 29/08/2026
 
 - New `-auto-tokens` option: per-game text compression. Instead of

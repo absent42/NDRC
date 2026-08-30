@@ -8,7 +8,7 @@ by a JSON file on disk; ndrc runs both stages in one process by
 default, and also exposes each stage on its own for tooling that wants
 the JSON intermediate directly.
 
-Every command prints one banner line (`NDRC 0.2` or `NDRC 0.2
+Every command prints one banner line (`NDRC 0.2.1` or `NDRC 0.2.1
 --to-json`/`--from-json`) before anything else; that line is omitted
 from the examples below.
 
@@ -94,6 +94,7 @@ input file.
 | `-v3` | Generate a DAAD V3 database. Default is V2. |
 | `-7` | Generate a 7-bit ASCII database. |
 | `-replace-xcondacts` | Replace extended condacts with their standard equivalents. |
+| `-cols=40`, `-cols=80` | Override the exported `COLS` symbol (NEXTDAAD 40-column text mode). Case-sensitive, NDRC extension. Any other value is an "Invalid option" error. |
 
 Options are matched left to right in one pass; an option's own
 confirmation line (when `-verbose` is on) reflects verbose's setting

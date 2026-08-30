@@ -38,7 +38,7 @@
 #include "front/symbols.h"
 #include "front/tokenlist.h"
 
-#define NDRC_VERSION "0.2"
+#define NDRC_VERSION "0.2.1"
 
 static int file_exists(const char *path)
 {
@@ -531,7 +531,7 @@ static void inject_additional_symbols(SymbolList *syms, Arena *a, Diag *d,
    than target/subtarget. */
 static void inject_builtin_symbols(SymbolList *syms, Arena *a, Diag *d,
                                     const char *target, const char *subtarget,
-                                    int v3code)
+                                    int v3code, int forced_cols)
 {
     char *machine;
     int cols;
@@ -555,8 +555,12 @@ static void inject_builtin_symbols(SymbolList *syms, Arena *a, Diag *d,
     if (to_json_is_bit16_target(machine)) symbols_add(syms, a, d, "BIT16", 1);
 
     /* 4: COLS, guarded on cols<>0 - dead in the current table (every
-       branch returns non-zero) but ported structurally. */
-    cols = to_json_cols_for_target(target, subtarget != NULL ? subtarget : "");
+       branch returns non-zero) but ported structurally. NDRC extension:
+       forced_cols (-cols=40|80, NEXTDAAD 40-column text mode) overrides
+       the table when set. */
+    cols = forced_cols != 0
+         ? forced_cols
+         : to_json_cols_for_target(target, subtarget != NULL ? subtarget : "");
     if (cols != 0) symbols_add(syms, a, d, "COLS", cols);
 
     /* 5: ROWS, unconditional. */
@@ -646,6 +650,7 @@ typedef struct {
     int check_maluva, v3code, ascii7, replace_xcondacts;
     int json_tee;               /* join only: --json seen */
     const char *json_path;      /* join only: --json=path, NULL = default */
+    int forced_cols;            /* NDRC extension: -cols=40|80, 0 = no override */
 } FrontCli;
 
 static void front_cli_init(FrontCli *fc)
@@ -826,6 +831,17 @@ static int parse_front_cli(Arena *a, Diag *d, char **args, int argc_eff,
         } else if (strcmp(arg, "-replace-xcondacts") == 0) {
             fc->replace_xcondacts = 1;
             if (fc->verbose) printf("Warning: Replacing Xcondacts\n");
+        } else if (strncmp(arg, "-cols=", 6) == 0) {
+            /* NDRC extension: override the target's COLS symbol (NEXTDAAD
+               40-column text mode). Only 40 and 80 are meaningful. */
+            if (strcmp(arg + 6, "40") == 0) fc->forced_cols = 40;
+            else if (strcmp(arg + 6, "80") == 0) fc->forced_cols = 80;
+            else {
+                diag_param_error(d, "Invalid option: %s", arg);
+                return diag_exit_code(d);
+            }
+            if (fc->verbose) printf("Warning: COLS forced to %d\n",
+                                    fc->forced_cols);
         } else if (bopts != NULL && join_match_option(a, fc, bopts, arg)) {
             /* A drb-stage option or the --json tee: no drf-stage echo -
                drb's own option echoes belong at the drb stage's
@@ -932,7 +948,7 @@ static int front_compile(Arena *a, Diag *d, const FrontCli *fc,
     }
 
     inject_builtin_symbols(sintactic_symbols(), a, d, fc->target_upper,
-                            fc->subtarget_upper, fc->v3code);
+                            fc->subtarget_upper, fc->v3code, fc->forced_cols);
     if (fc->additional_symbols[0] != '\0') {
         inject_additional_symbols(sintactic_symbols(), a, d,
                                   fc->additional_symbols);
