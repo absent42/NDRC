@@ -85,7 +85,7 @@ void emit_vocabulary(Str *out, long *addr, const Adventure *adv);
    registration (drb.php:1050-1130), bytecode emission (INDIR
    second-parameter indirection, the terminator set, the 0xFF
    no-terminator marker), and the entry/process tables. Defect detail:
-   emit_proc.c (S12.7/S12.9/S12.2 notes at their sites). verbose is
+   emit_proc.c (S12.9/S12.2 notes at their sites). verbose is
    threaded explicitly; the PHP reads a global. Sets no return value:
    the caller computes the process table's own offset as
    `*addr - 2*process_count` after this returns, as drb.php:2033

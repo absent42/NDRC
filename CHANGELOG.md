@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.2 - 26/09/2026
+
+- Entries that differ only in indirection no longer share one compiled
+  body. Entry sharing ignored `@` on either parameter, so `MES @x` could
+  run as `MES x` and `LET a @b` could lose its `INDIR` prefix. This
+  reproduced a bug in the DRC reference that Uto fixed upstream in
+  commit 71df4e5; output stays byte-identical to DRC.
+
 ## v0.2.1 - 30/08/2026
 
 - New `-cols=40|80` option: overrides the exported `COLS` symbol for

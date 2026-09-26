@@ -84,14 +84,10 @@ typedef struct {
     long offset;   /* -1 = not yet assigned; drb.php's $hashInfo->offset */
 } HashInfo;
 
-/* PORT: drb.php:769-802 getCondactsHash. Reproduces defect S12.7
-   deliberately: drb.php:778 computes an indirection-masked opcode into
-   a local variable, but drb.php:779 appends the RAW, un-masked
-   condact->Opcode to the hash string instead of using it - so two
-   condacts differing only in Indirection1 hash identically. Indirection2
-   never participates in the hash at all (no line ever appends it). Both
-   are ported as-is: the masked `opcode` local below is computed and
-   then discarded, exactly as the PHP wastes it. */
+/* PORT: drb.php getCondactsHash, as fixed upstream in DRC 71df4e5.
+   Hashes the indirection-masked opcode and marks second-parameter
+   indirection with '@', so entries differing only in indirection
+   never share a compiled body. */
 static const char *condacts_hash(Arena *arena, const Adventure *adv, Vec_Condact *condacts, size_t from)
 {
     Str *h = str_new(arena);
@@ -105,12 +101,12 @@ static const char *condacts_hash(Arena *arena, const Adventure *adv, Vec_Condact
         if (opcode == FAKE_USERPTR_CONDACT_CODE) continue;
 
         if (c->NumParams > 0 && c->Indirection1) opcode |= 0x80;
-        (void)opcode;   /* computed, never read - defect S12.7 */
 
-        str_appendf(h, "%ld ", c->Opcode);
+        str_appendf(h, "%ld ", opcode);
         if (c->NumParams > 0) {
             str_appendf(h, "%ld ", c->Param1);
             if (c->NumParams > 1) {
+                if (c->Indirection2) str_push(h, '@');
                 str_appendf(h, "%ld ", c->Param2);
                 if (c->NumParams > 2) {
                     str_appendf(h, "%ld ", c->Param3);
