@@ -154,7 +154,7 @@ jobs:
         run: |
           mkdir -p dist
           zip -j "dist/ndrc-${{ steps.version.outputs.ver }}-win64.zip" \
-            ndrc.exe LICENSE README.md docs/cli.md
+            ndrc.exe LICENSE README.md CHANGELOG.md docs/cli.md
       - uses: actions/upload-artifact@v7
         with:
           name: ndrc-${{ steps.version.outputs.ver }}-win64
@@ -170,7 +170,7 @@ jobs:
       - name: Assemble linux64 package
         run: |
           tar -czf "dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz" \
-            ndrc LICENSE README.md -C docs cli.md
+            ndrc LICENSE README.md CHANGELOG.md -C docs cli.md
       - uses: actions/upload-artifact@v7
         with:
           name: ndrc-${{ steps.version.outputs.ver }}-linux64
