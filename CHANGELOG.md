@@ -2,6 +2,10 @@
 
 ## v0.2.2 - 26/09/2026
 
+- The linux64 release binary is linked statically. A dynamic link on the
+  build runner bound fmod@GLIBC_2.38 and failed on glibc 2.35 (Ubuntu
+  22.04); the static build runs on any x86_64 glibc distro and produces
+  byte-identical DDBs. Windows and source builds are unchanged.
 - Entries that differ only in indirection no longer share one compiled
   body. Entry sharing ignored `@` on either parameter, so `MES @x` could
   run as `MES x` and `LET a @b` could lose its `INDIR` prefix. This

@@ -163,10 +163,15 @@ jobs:
       # before the native link sees them as up to date.
       - name: Drop the cross-build objects
         run: make clean
+      # -static: the release binary must run on any x86_64 glibc distro,
+      # not only the runner's. A dynamic link on ubuntu-latest binds
+      # fmod@GLIBC_2.38 and fails on Ubuntu 22.04. Static is safe here:
+      # ndrc uses no dlopen or NSS. Verified 2026-09-27: make test passes,
+      # runs on glibc 2.35, DDB output byte-identical to the win64 build.
       - name: Build for Linux
-        run: make ndrc EXTRA=-Werror
+        run: make ndrc EXTRA='-Werror -static'
       # -C flattens docs/cli.md to the archive root, as zip -j does
-      # above. Built on ubuntu-latest, so it needs that glibc or newer.
+      # above. Statically linked, so it runs on any x86_64 glibc distro.
       - name: Assemble linux64 package
         run: |
           tar -czf "dist/ndrc-${{ steps.version.outputs.ver }}-linux64.tar.gz" \
