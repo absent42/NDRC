@@ -79,7 +79,7 @@ long emit_connections(Str *out, long *addr, const Target *t, const Adventure *ad
 void emit_vocabulary(Str *out, long *addr, const Adventure *adv);
 
 /* -srcmap: DDB addresses of each entry record and of each emitted
-   condact's first byte (INDIR prefix included), one cond per owning
+   condact's opcode byte (plus its INDIR byte when prefixed), per owning
    entry - a shared entry's conds sit on the bytes it points at. */
 typedef struct { long proc, entry, record; } ProcEntryAddr;
 typedef struct { const ProcEntryAddr *owner; long addr; int src; } ProcCondAddr;

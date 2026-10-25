@@ -286,8 +286,9 @@ static int run_from_json(int argc, char **argv)
         }
     }
 
-    /* Source positions exist only when the front end ran in-process. */
-    if (opts.srcmap_path != NULL) {
+    /* Source positions exist only when the front end ran in-process. A
+       pending option error keeps its own position (drb.php:1769). */
+    if (opts.srcmap_path != NULL && opts.option_error == NULL) {
         diag_fatal(d, "-srcmap needs a .DSF source input");
         return diag_exit_code(d);
     }
@@ -790,13 +791,12 @@ static int parse_front_cli(Arena *a, Diag *d, char **args, int argc_eff,
        `--json=<path>`, `--tok=<path>` and `-srcmap=<path>` are the
        carve-outs from that: each usually carries a dot, and letting one
        become the DDB name would make its tee silently redirect the
-       compile it is supposed
-       to leave untouched. --to-json (bopts NULL) keeps the heuristic
-       exactly as drf.pas has it. The carve-out only declines the slot: a
-       `--json=x.json out.ddb` pair leaves the slot unclaimed, so
-       out.ddb reaches the loop below as the symbol list - drf's own
-       grammar, where the heuristic looks at the FIRST post-input
-       argument only. */
+       compile it is supposed to leave untouched. --to-json (bopts NULL)
+       keeps the heuristic exactly as drf.pas has it. The carve-out only
+       declines the slot: a `--json=x.json out.ddb` pair leaves the slot
+       unclaimed, so out.ddb reaches the loop below as the symbol list -
+       drf's own grammar, where the heuristic looks at the FIRST
+       post-input argument only. */
     aux = pstr(args, argc_eff, next_param);
     if (strchr(aux, '.') != NULL &&
         !(bopts != NULL && (join_is_json_opt(aux) || join_is_tok_opt(aux) ||

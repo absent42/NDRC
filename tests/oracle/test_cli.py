@@ -1857,6 +1857,22 @@ def test_from_json_srcmap_refused():
               "from-json srcmap: a DSM was written")
 
 
+def test_from_json_srcmap_defers_to_a_pending_option_error():
+    """drb's own ordered option error is reported first."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = Path(tmp)
+        inp = _fixture_copy(tmpdir)
+        rc, out = run(["--from-json", "NEXTDAAD", "EN", str(inp),
+                       str(tmpdir / "o.ddb"), "-srcmap=" + str(tmpdir / "x.dsm"),
+                       "-q"])
+        check(rc == 2, f"from-json srcmap+bad: expected exit 2, got {rc}")
+        check(out == "Target: NEXTDAAD\nError: -Q is not a valid option.\n",
+              f"from-json srcmap+bad: unexpected stdout {out!r}")
+        check(not (tmpdir / "o.ddb").exists() and
+              not (tmpdir / "x.dsm").exists(),
+              "from-json srcmap+bad: a file was written")
+
+
 def test_join_json_tee_survives_a_drb_stage_failure():
     """The tee is written immediately after the drf stage, so a drb
     refusal (XMSG's XDATA check) still leaves the diagnostic JSON, equal

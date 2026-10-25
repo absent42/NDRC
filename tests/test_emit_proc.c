@@ -251,7 +251,7 @@ TEST(srcmap_xdata_expansion_keeps_line)
 }
 
 /* USERPTR emits nothing, nor does a condact after a terminator; an
-   INDIR-prefixed condact is recorded at the prefix byte. */
+   INDIR-prefixed condact is recorded at the prefix and opcode bytes. */
 TEST(srcmap_unemitted_have_no_record)
 {
     static const unsigned char want[] = {
@@ -274,9 +274,43 @@ TEST(srcmap_unemitted_have_no_record)
     if (str_len(out) >= sizeof want) CHECK_MEM(str_bytes(out), want, sizeof want);
     CHECK(m.conds != NULL);
     if (m.conds == NULL) { arena_free(a); return; }
-    CHECK_INT(vec_len_ProcCondAddr(m.conds), 2);
+    CHECK_INT(vec_len_ProcCondAddr(m.conds), 3);
     check_cond(&m, 0, 0, 1, 0, 6);
-    check_cond(&m, 1, 5, 2, 0, 6);
+    check_cond(&m, 1, 2, 1, 0, 6);
+    check_cond(&m, 2, 5, 2, 0, 6);
+    arena_free(a);
+}
+
+/* LET 100 @101: one record at the INDIR byte and one at the LET opcode,
+   in the emitting entry and in an entry sharing its bytes. */
+TEST(srcmap_indir_records_prefix_and_opcode)
+{
+    static const unsigned char want[] = { INDIR_OP, 101, LET_OP, 100, 101, DONE_OP };
+    Arena *a = arena_new(0);
+    Str *out = str_new(a);
+    Adventure adv;
+    Process *p = new_adventure(a, &adv);
+    ProcAddrs m = { NULL, NULL };
+    ProcEntry *e1 = new_entry(a, p);
+    ProcEntry *e2 = new_entry(a, p);
+
+    push(e1, condact(a, LET_OP, "LET", 2, 100, 0, 101, 1));
+    push(e1, condact(a, DONE_OP, "DONE", 0, 0, 0, 0, 0));
+    push(e2, condact(a, LET_OP, "LET", 2, 100, 0, 101, 1));
+    push(e2, condact(a, DONE_OP, "DONE", 0, 0, 0, 0, 0));
+    emit_map(a, &adv, out, &m);
+
+    CHECK(str_len(out) >= sizeof want);
+    if (str_len(out) >= sizeof want) CHECK_MEM(str_bytes(out), want, sizeof want);
+    CHECK(m.conds != NULL);
+    if (m.conds == NULL) { arena_free(a); return; }
+    CHECK_INT(vec_len_ProcCondAddr(m.conds), 6);
+    check_cond(&m, 0, 0, 0, 0, 6);
+    check_cond(&m, 1, 2, 0, 0, 6);
+    check_cond(&m, 2, 5, 1, 0, 6);
+    check_cond(&m, 3, 0, 0, 1, 10);
+    check_cond(&m, 4, 2, 0, 1, 10);
+    check_cond(&m, 5, 5, 1, 1, 10);
     arena_free(a);
 }
 
@@ -288,5 +322,6 @@ int main(void)
     RUN(srcmap_shared_tail_mid_body);
     RUN(srcmap_xdata_expansion_keeps_line);
     RUN(srcmap_unemitted_have_no_record);
+    RUN(srcmap_indir_records_prefix_and_opcode);
     return test_summary("emit_proc");
 }

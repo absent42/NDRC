@@ -329,7 +329,8 @@ static long xmessage_offset_at(const Adventure *adv, long messno)
     return adv->xmessage_offsets[messno];
 }
 
-/* -srcmap: the dump's own skip rules and byte count per condact. */
+/* The dump's skip rules and byte layout per condact, shared with the
+   -srcmap walk of shared entries so the two cannot drift. */
 static int emits_nothing(const Adventure *adv, const Condact *c)
 {
     return (c->Opcode == FAKE_DEBUG_CONDACT_CODE && !adv->debug_mode) ||
@@ -341,9 +342,16 @@ static long emitted_opcode(const Condact *c)
     return (c->NumParams > 0 && c->Indirection1) ? (c->Opcode | 0x80) : c->Opcode;
 }
 
+/* PORT: drb.php:1115/1140-1145. The NumParams guard is part of the
+   condition: a one-param condact with Indirection2 must NOT emit INDIR. */
+static int has_indir_prefix(const Condact *c)
+{
+    return c->NumParams > 1 && c->Indirection2;
+}
+
 static long emitted_size(const Condact *c)
 {
-    return ((c->NumParams > 1 && c->Indirection2) ? 2 : 0) + 1 + c->NumParams;
+    return (has_indir_prefix(c) ? 2 : 0) + 1 + c->NumParams;
 }
 
 static void map_cond(Arena *a, ProcAddrs *map, const ProcEntryAddr *owner,
@@ -358,6 +366,15 @@ static void map_cond(Arena *a, ProcAddrs *map, const ProcEntryAddr *owner,
     vec_push_ProcCondAddr(map->conds, r);
 }
 
+/* INDIR runs as its own engine step, so a prefixed condact is recorded
+   at the 7A byte and again at its opcode byte. */
+static void map_condact(Arena *a, ProcAddrs *map, const ProcEntryAddr *owner,
+                        const Condact *c, long at)
+{
+    map_cond(a, map, owner, c, at);
+    if (has_indir_prefix(c)) map_cond(a, map, owner, c, at + 2);
+}
+
 /* A shared entry's condacts laid over the earlier bytes at `at`: equal
    hashes mean equal bytes, so the dump's own walk applies. */
 static void map_shared(Arena *a, ProcAddrs *map, const Adventure *adv,
@@ -367,7 +384,7 @@ static void map_shared(Arena *a, ProcAddrs *map, const Adventure *adv,
     for (i = 0; i < n; i++) {
         const Condact *c = vec_at_Condact(condacts, i);
         if (emits_nothing(adv, c)) continue;
-        map_cond(a, map, owner, c, at);
+        map_condact(a, map, owner, c, at);
         at += emitted_size(c);
         if (!adv->classic_mode && is_terminator(emitted_opcode(c))) break;
     }
@@ -725,12 +742,12 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
 
             for (condactID = 0; condactID < (long)vec_len_Condact(entry->condacts); condactID++) {
                 Condact *condact = vec_at_Condact(entry->condacts, (size_t)condactID);
-                long opcode = condact->Opcode;
-                int has_second_param_indirection = (condact->NumParams > 1) && condact->Indirection2;
-                long i;
+                long opcode = emitted_opcode(condact);
+                int has_second_param_indirection = has_indir_prefix(condact);
+                long i, start;
 
-                if (opcode == FAKE_DEBUG_CONDACT_CODE && !adv->debug_mode) continue;
-                if (opcode == FAKE_USERPTR_CONDACT_CODE) {
+                if (emits_nothing(adv, condact)) {
+                    if (condact->Opcode != FAKE_USERPTR_CONDACT_CODE) continue;
                     /* PORT: drb.php:1117-1123; drb.php:1119
                        auto-vivifies out-of-range extvec keys. The
                        header patch reads only 0..12, so they are
@@ -764,24 +781,18 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
                     }
                 }
 
-                map_cond(str_arena(out), map, owner, condact, *addr);
+                map_condact(str_arena(out), map, owner, condact, *addr);
 
-                if (condact->NumParams > 0 && condact->Indirection1) opcode |= 0x80;
                 if (opcode == FAKE_DEBUG_CONDACT_CODE && verbose) diag_note(d, "Debug condact found, inserted.");
 
-                /* PORT: drb.php:1115/1140-1145. The NumParams guard is
-                   part of the condition, not a nicety - a one-param
-                   condact with Indirection2 (impossible in valid
-                   input, since Indirection2 only ever applies to a
-                   second parameter) must NOT emit INDIR. */
+                /* PORT: drb.php:1115/1140-1145 - see has_indir_prefix. */
+                start = *addr;
                 if (has_second_param_indirection) {
                     str_push_u8(out, (unsigned)INDIR_OPCODE);
                     str_push_u8(out, (unsigned)condact->Param2);
-                    *addr += 2;
                 }
 
                 str_push_u8(out, (unsigned)opcode);
-                (*addr)++;
 
                 /* PORT NOTE: drb.php's matching switch has no default
                    arm - NumParams > 4 writes nothing yet drb.php:1145
@@ -802,7 +813,7 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
                     }
                     str_push_u8(out, (unsigned)param);
                 }
-                *addr += condact->NumParams;
+                *addr = start + emitted_size(condact);
 
                 if (!adv->classic_mode && is_terminator(opcode)) {
                     terminator_found = 1;
