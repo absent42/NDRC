@@ -263,10 +263,17 @@ static const char *utf8_encode_cp1252(Arena *a, const char *text, size_t len)
     return arena_strdup(a, str_cstr(s));
 }
 
+/* 1-based start column of the current match, from the RAW yyleng
+   (rules 31 and 36 store re-encoded or stripped text). */
+static int start_col(void)
+{
+    return yycolno - (int)yyleng;
+}
+
 static void add_simple(TokenList *list, Arena *a, int id)
 {
     tokenlist_add(list, a, id, arena_strndup(a, yytext, yyleng),
-                  TOKEN_NO_VALUE, yylineno, yycolno);
+                  TOKEN_NO_VALUE, yylineno, yycolno, start_col());
 }
 
 /* PORT: lexer.pas:19-111 (yyaction), the 43 DSF.l rule actions,
@@ -309,7 +316,8 @@ static int lex_action(Arena *a, Diag *d, TokenList *list, int rule)
     case 30: add_simple(list, a, T_STRING); break;        /* "..." greedy to last quote, 19.7 */
     case 31: {                                            /* '...''  - UTF8Encode, 19.6 */
         const char *encoded = utf8_encode_cp1252(a, yytext, yyleng);
-        tokenlist_add(list, a, T_STRING, encoded, TOKEN_NO_VALUE, yylineno, yycolno);
+        tokenlist_add(list, a, T_STRING, encoded, TOKEN_NO_VALUE, yylineno,
+                      yycolno, start_col());
         break;
     }
     case 32: add_simple(list, a, T_UNDERSCORE); break;    /* "_" */
@@ -327,14 +335,14 @@ static int lex_action(Arena *a, Diag *d, TokenList *list, int rule)
             return 0;
         }
         tokenlist_add(list, a, T_LIST_ENTRY, arena_strndup(a, yytext, yyleng),
-                      value, yylineno, yycolno);
+                      value, yylineno, yycolno, start_col());
         break;
     }
     case 36:                                              /* /name - named list entry */
         /* PORT: lexer.pas:95 - Text is Copy(yytext,2,Length-1) (slash
            stripped), IntVal is MaxLongInt (no numeric value). */
         tokenlist_add(list, a, T_LIST_ENTRY, arena_strndup(a, yytext + 1, yyleng - 1),
-                      TOKEN_NO_VALUE, yylineno, yycolno);
+                      TOKEN_NO_VALUE, yylineno, yycolno, start_col());
         break;
     case 37: break;                                       /* ;comment\n - discarded, 15.1(g) */
     case 38: {                                             /* -?[0-9]+ */
@@ -344,7 +352,7 @@ static int lex_action(Arena *a, Diag *d, TokenList *list, int rule)
             return 0;
         }
         tokenlist_add(list, a, T_NUMBER, arena_strndup(a, yytext, yyleng),
-                      value, yylineno, yycolno);
+                      value, yylineno, yycolno, start_col());
         break;
     }
     case 39: add_simple(list, a, T_LABEL); break;         /* $name */

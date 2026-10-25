@@ -23,6 +23,7 @@ typedef struct Token {
     const char *text;
     long value;
     int line, col;
+    int scol;   /* 1-based start column (yycolno - raw yyleng); -srcmap only */
     struct Token *next;
 } Token;
 
@@ -44,9 +45,9 @@ TokenList *tokenlist_new(Arena *a);
    exactly as every one of lexer.pas's 43 actions does - do not
    pre-subtract at the call site. `text` is stored by pointer, not
    copied: the caller must pass arena-owned (or otherwise
-   process-lifetime) storage. */
+   process-lifetime) storage. `scol` is stored as given. */
 void tokenlist_add(TokenList *list, Arena *a, int id, const char *text,
-                    long value, int lineno, int yycolno);
+                    long value, int lineno, int yycolno, int scol);
 
 /* The list built so far, head first. NULL if tokenlist_add has never
    been called (an empty source file, or every character was

@@ -15,7 +15,7 @@ TokenList *tokenlist_new(Arena *a)
 }
 
 void tokenlist_add(TokenList *list, Arena *a, int id, const char *text,
-                    long value, int lineno, int yycolno)
+                    long value, int lineno, int yycolno, int scol)
 {
     Token *t = arena_alloc(a, sizeof(*t));
     Token *cur;
@@ -25,6 +25,7 @@ void tokenlist_add(TokenList *list, Arena *a, int id, const char *text,
     t->value = value;
     t->line = lineno;
     t->col = yycolno - 1;   /* PORT: UTokenList.pas:49 */
+    t->scol = scol;
     t->next = NULL;
 
     if (list->head == NULL) {

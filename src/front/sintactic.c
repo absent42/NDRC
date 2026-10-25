@@ -20,6 +20,7 @@
 #include "expr.h"
 #include "include.h"
 #include "lex_tokens.h"
+#include "srcpos.h"
 
 /* PORT: Pascal's MAXLONGINT sentinel, the "no value / not found"
    marker threaded through GetSymbolValue/GetIdentifierValue/
@@ -62,6 +63,16 @@ static ProcessTable *g_processes;   /* UProcess.Processes */
 static long g_last_process;         /* UProcess.LastProcess */
 static LabelTable *g_labels;        /* ULabelList.LabelList */
 static CTLExternList *g_externs;    /* UCTLExtern.CTLExternList */
+
+/* -srcmap: the rows of the entry being parsed and the position of the
+   token that opened the current row (condact name or directive). */
+static SrcPosConds *g_row_conds;
+static SrcPos g_row_pos;
+
+static SrcPos cur_pos(void)
+{
+    return srcpos_at(cur->line, cur->scol);
+}
 
 /* ---- error reporting ---- */
 
@@ -325,6 +336,7 @@ static void parse_define(void)
     value = extract_value(symbol);
     if (!symbols_add(g_symbols, g_arena, g_diag, symbol, value))
         syntax_error("\"%s\" already defined", symbol);
+    srcpos_add_define(symbol, value);
 }
 
 /* PORT: getMaluvaFilename (USintactic.pas:167-172) + defect 19.26:
@@ -909,6 +921,7 @@ static void entry_condacts_add(Vec_ProcessCondact **list, long opcode,
 {
     if (*list == NULL) *list = vec_new_ProcessCondact(g_arena);
     process_condacts_add(*list, g_arena, opcode, num_params, params, is_db);
+    srcpos_conds_add(g_row_conds, g_row_pos);
 }
 
 /* PORT: ParseProcessCondacts (USintactic.pas:547-812), whole: the
@@ -936,6 +949,7 @@ static void parse_process_condacts(Vec_ProcessCondact **some_entry_condacts,
         /* Get Condact - skip the very first time, while the condact
            list is still empty, because it is already read. */
         if (*some_entry_condacts != NULL) scan();
+        g_row_pos = cur_pos(); /* before any parameter is scanned */
         if (current_token_id != T_IDENTIFIER &&
             current_token_id != T_UNDERSCORE &&
             current_token_id != T_SECTION_PRO &&
@@ -1377,7 +1391,7 @@ static void parse_process_condacts(Vec_ProcessCondact **some_entry_condacts,
 
 /* PORT: ParseVerbNoun (USintactic.pas:814-846). A verb slot accepts a
    VERB or a convertible NOUN (value <= MAX_CONVERTIBLE_NAME). */
-static void parse_verb_noun(long *verb, long *noun)
+static void parse_verb_noun(long *verb, long *noun, SrcPos *verb_pos)
 {
     const char *the_word;
     VocEntry aux;
@@ -1385,6 +1399,7 @@ static void parse_verb_noun(long *verb, long *noun)
     int found;
 
     scan(); /* Get the verb */
+    *verb_pos = cur_pos();
     if (current_token_id != T_NUMBER && current_token_id != T_IDENTIFIER &&
         current_token_id != T_UNDERSCORE)
         syntax_error("Vocabulary verb expected but \"%s\" found",
@@ -1431,6 +1446,7 @@ static void parse_process_entries(long current_process)
     long verb, noun;
     Vec_ProcessCondact *entry_condacts;
     long *verb_nouns = NULL;
+    SrcPos *verb_pos = NULL; /* one per verb/noun pair */
     size_t vn_len = 0, vn_cap = 0;
     size_t i;
     long current_entry;
@@ -1461,21 +1477,30 @@ static void parse_process_entries(long current_process)
             } else { /* An entry */
                 vn_len = 0;
                 do { /* per synonym entry */
-                    parse_verb_noun(&verb, &noun);
+                    SrcPos vpos;
+                    parse_verb_noun(&verb, &noun, &vpos);
                     if (vn_len + 2 > vn_cap) {
                         size_t new_cap = vn_cap ? vn_cap * 2 : 8;
                         long *grown = arena_alloc(g_arena,
                                                    sizeof(long) * new_cap);
-                        if (vn_len)
+                        SrcPos *pgrown = arena_alloc(g_arena,
+                                            sizeof(SrcPos) * (new_cap / 2));
+                        if (vn_len) {
                             memcpy(grown, verb_nouns, sizeof(long) * vn_len);
+                            memcpy(pgrown, verb_pos,
+                                   sizeof(SrcPos) * (vn_len / 2));
+                        }
                         verb_nouns = grown;
+                        verb_pos = pgrown;
                         vn_cap = new_cap;
                     }
+                    verb_pos[vn_len / 2] = vpos;
                     verb_nouns[vn_len++] = verb;
                     verb_nouns[vn_len++] = noun;
                     scan();
                 } while (current_token_id == T_PROCESS_ENTRY_SIGN);
                 entry_condacts = NULL;
+                g_row_conds = srcpos_conds_new();
                 parse_process_condacts(&entry_condacts, current_process,
                                         current_entry);
                 /* Dump condacts once per synonym entry - the SAME
@@ -1488,6 +1513,8 @@ static void parse_process_entries(long current_process)
                     process_add_entry(slot, g_arena, verb_nouns[i * 2],
                                        verb_nouns[i * 2 + 1], NULL,
                                        entry_condacts);
+                    srcpos_add_entry(current_process, verb_pos[i],
+                                     g_row_conds);
                 }
                 current_entry = current_entry + (long)(vn_len / 2);
             }
@@ -1502,11 +1529,13 @@ static void parse_process_entries(long current_process)
 static void parse_pro(void)
 {
     long proc_num;
+    SrcPos num_pos;
 
     g_processes = processtable_new(g_arena); /* InitializeProcesses() */
     g_last_process = -1;
     do {
         scan();
+        num_pos = cur_pos();
         if (current_token_id != T_IDENTIFIER &&
             current_token_id != T_NUMBER)
             syntax_error("Process number expected but \"%s\" found",
@@ -1523,6 +1552,7 @@ static void parse_pro(void)
                 warning("Process #%ld already defined, concatenating entries",
                          proc_num);
         }
+        srcpos_set_proc(proc_num, num_pos);
         parse_process_entries(proc_num);
     } while (current_token_id != T_SECTION_END);
 }
@@ -1542,6 +1572,8 @@ void sintactic_init(Arena *a, Diag *d)
     g_last_process = -1;
     g_labels = labels_new(a);
     g_externs = ctlextern_new(a);
+    srcpos_reset(a);
+    g_row_conds = NULL;
     classic_mode = 0;
     debug_mode = 0;
     maluva_used = 0;
@@ -1579,6 +1611,7 @@ int sintactic_parse(Arena *a, Diag *d, Token *stream,
     fake.value = TOKEN_NO_VALUE;
     fake.line = 0;
     fake.col = 0;
+    fake.scol = 0;
     fake.next = stream;
 
     /* PORT: Sintactic's entry resets (USintactic.pas:936-947).
