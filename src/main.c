@@ -38,7 +38,7 @@
 #include "front/symbols.h"
 #include "front/tokenlist.h"
 
-#define NDRC_VERSION "0.2.2"
+#define NDRC_VERSION "0.3.0"
 
 static int file_exists(const char *path)
 {

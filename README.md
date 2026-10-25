@@ -69,6 +69,16 @@ unchanged.
 See [docs\cli.md](docs/cli.md), "Per-game token selection", for the
 freeze workflow and the classic-target details.
 
+## Source maps: -srcmap
+
+    ndrc NEXTDAAD EN game.DSF -srcmap=game.dsm
+
+NDRC v0.3+ can write a DSM v2 source map alongside the DDB. It records
+the DSF file, line and column of every emitted condact, entry and
+process, plus the `#define` symbols, so a debugger can map DDB offsets
+back to source. The DDB itself is byte-identical with or without the
+flag. See [docs\cli.md](docs/cli.md) for the details and limits.
+
 ## Building from source
 
 Requires a C17 compiler, no other dependencies. On Windows, run

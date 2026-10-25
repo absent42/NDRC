@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0 - 25/10/2026
+
+- New `-srcmap=<path>` option: writes a DSM v2 source map beside the
+  DDB, pairing each emitted condact, entry and process with its DSF
+  file, line and column, plus the `#define` symbols. It is read by the
+  NextDAAD CSpect debugger for source-level breakpoints and stepping.
+  Case-sensitive, NDRC extension. The DDB is byte-identical with or
+  without it. Needs a .DSF source input: `--from-json` refuses it.
+  With `-np` no map is written, because that option stops the compile
+  early.
+
 ## v0.2.2 - 26/09/2026
 
 - The linux64 release binary is linked statically. A dynamic link on the
