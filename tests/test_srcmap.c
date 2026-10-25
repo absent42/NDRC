@@ -103,8 +103,30 @@ TEST(write_failure_reported)
     srcmap_free(m);
 }
 
+static void check_rel(const char *dsm, const char *file, const char *want)
+{
+    char *got = srcmap_rel_path(dsm, file);
+    CHECK_STR(got, want);
+    free(got);
+}
+
+TEST(rel_path_from_dsm_dir)
+{
+    check_rel("/a/b/x.dsm", "/a/b/g.dsf", "g.dsf");
+    check_rel("/a/b/x.dsm", "/a/c/g.dsf", "../c/g.dsf");
+    check_rel("/a/b/./x.dsm", "/a/b/../b/inc/i.dsf", "inc/i.dsf");
+    check_rel("/a/b/c/x.dsm", "/g.dsf", "../../../g.dsf");
+    check_rel("out/x.dsm", "g.dsf", "../g.dsf");
+    check_rel("x.dsm", "sub\\g.dsf", "sub/g.dsf");
+#ifdef _WIN32
+    check_rel("C:\\a\\x.dsm", "c:/a/G.DSF", "G.DSF");
+    check_rel("C:/a/x.dsm", "D:\\b\\g.dsf", "D:/b/g.dsf");
+#endif
+}
+
 int main(void)
 {
+    RUN(rel_path_from_dsm_dir);
     RUN(crc32_check_value);
     RUN(writer_v2_layout);
     RUN(file_index_dedup);

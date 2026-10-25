@@ -213,10 +213,11 @@ static int parse_xdata_int(const char *s, long *out)
     return 1;
 }
 
-/* PORT: drb.php:1515-1526 dataToLet. */
-static Condact *data_to_let(Arena *a, long flagno, long value)
+/* PORT: drb.php:1515-1526 dataToLet. src is the XDATA's. */
+static Condact *data_to_let(Arena *a, long flagno, long value, int src)
 {
     Condact *c = arena_calloc(a, sizeof(*c));
+    c->src = src;
     c->NumParams = 2;
     c->Indirection1 = 0;
     c->Param1 = flagno;
@@ -296,7 +297,7 @@ static int rewrite_xdata(Diag *d, Arena *a, const Adventure *adv, ProcEntry *ent
             return 0;
         }
         parse_xdata_int(vec_at_CStr(elements, i), &value);
-        vec_push_Condact(lets, data_to_let(a, base_flagno, value));
+        vec_push_Condact(lets, data_to_let(a, base_flagno, value, condact->src));
         base_flagno++;
     }
 
@@ -328,11 +329,58 @@ static long xmessage_offset_at(const Adventure *adv, long messno)
     return adv->xmessage_offsets[messno];
 }
 
-void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *adv, int verbose)
+/* -srcmap: the dump's own skip rules and byte count per condact. */
+static int emits_nothing(const Adventure *adv, const Condact *c)
+{
+    return (c->Opcode == FAKE_DEBUG_CONDACT_CODE && !adv->debug_mode) ||
+           c->Opcode == FAKE_USERPTR_CONDACT_CODE;
+}
+
+static long emitted_opcode(const Condact *c)
+{
+    return (c->NumParams > 0 && c->Indirection1) ? (c->Opcode | 0x80) : c->Opcode;
+}
+
+static long emitted_size(const Condact *c)
+{
+    return ((c->NumParams > 1 && c->Indirection2) ? 2 : 0) + 1 + c->NumParams;
+}
+
+static void map_cond(Arena *a, ProcAddrs *map, const ProcEntryAddr *owner,
+                     const Condact *c, long at)
+{
+    ProcCondAddr *r;
+    if (map == NULL) return;
+    r = arena_alloc(a, sizeof(*r));
+    r->owner = owner;
+    r->addr = at;
+    r->src = c->src;
+    vec_push_ProcCondAddr(map->conds, r);
+}
+
+/* A shared entry's condacts laid over the earlier bytes at `at`: equal
+   hashes mean equal bytes, so the dump's own walk applies. */
+static void map_shared(Arena *a, ProcAddrs *map, const Adventure *adv,
+                       const ProcEntryAddr *owner, Vec_Condact *condacts, long at)
+{
+    size_t i, n = vec_len_Condact(condacts);
+    for (i = 0; i < n; i++) {
+        const Condact *c = vec_at_Condact(condacts, i);
+        if (emits_nothing(adv, c)) continue;
+        map_cond(a, map, owner, c, at);
+        at += emitted_size(c);
+        if (!adv->classic_mode && is_terminator(emitted_opcode(c))) break;
+    }
+}
+
+void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *adv, int verbose,
+                    ProcAddrs *map)
 {
     long procID, entryID;
     Map *hash_map;
     Map *cond_offsets;
+    ProcEntryAddr *owner = NULL;
+    size_t record_ix = 0;
 
     /* =================================================================
        PASS ZERO (drb.php:822-1048): check the processes and rewrite
@@ -493,7 +541,10 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
 
                         mml_to_beep(str_arena(out), d, note, values, t, &beep);
                         if (diag_error_count(d) > errors_before) return;   /* drb.php:1623 Error() */
-                        if (beep != NULL) vec_push_Condact(xplay, beep);
+                        if (beep != NULL) {
+                            beep->src = condact->src;
+                            vec_push_Condact(xplay, beep);
+                        }
                         mml = next;
                     }
 
@@ -617,6 +668,10 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
     /* =================================================================
        DUMP: emit bytecode and record which address each entry's
        condacts start at (drb.php:1081-1197). */
+    if (map != NULL) {
+        map->entries = vec_new_ProcEntryAddr(str_arena(out));
+        map->conds = vec_new_ProcCondAddr(str_arena(out));
+    }
     for (procID = 0; procID < (long)vec_len_Process(adv->processes); procID++) {
         Process *process = vec_at_Process(adv->processes, (size_t)procID);
 
@@ -626,6 +681,14 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
             int skip = 0;
             int terminator_found = 0;
             long condactID;
+
+            if (map != NULL) {
+                owner = arena_alloc(str_arena(out), sizeof(*owner));
+                owner->proc = procID;
+                owner->entry = entryID;
+                owner->record = -1;   /* set by the entry table below */
+                vec_push_ProcEntryAddr(map->entries, owner);
+            }
 
             if (!adv->classic_mode) {
                 const char *hash = condacts_hash(str_arena(out), adv, entry->condacts, 0);
@@ -637,6 +700,8 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
                         snprintf(key, sizeof key, "%ld_%ld", procID, entryID);
                         map_put(cond_offsets, key, off);
                         skip = 1;
+                        if (map != NULL)
+                            map_shared(str_arena(out), map, adv, owner, entry->condacts, hi->offset);
                     } else {
                         layout_pad(out, addr, t);
                         hi->offset = *addr;
@@ -698,6 +763,8 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
                         }
                     }
                 }
+
+                map_cond(str_arena(out), map, owner, condact, *addr);
 
                 if (condact->NumParams > 0 && condact->Indirection1) opcode |= 0x80;
                 if (opcode == FAKE_DEBUG_CONDACT_CODE && verbose) diag_note(d, "Debug condact found, inserted.");
@@ -789,6 +856,8 @@ void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *a
 
                 snprintf(ckey, sizeof ckey, "%ld_%ld", procID, entryID);
                 coff = map_get(cond_offsets, ckey);
+                if (map != NULL)
+                    vec_at_ProcEntryAddr(map->entries, record_ix++)->record = *addr;
                 str_push_u8(out, (unsigned)entry->Verb);
                 str_push_u8(out, (unsigned)entry->Noun);
                 str_push_u16(out, (unsigned)*coff, t->big_endian);

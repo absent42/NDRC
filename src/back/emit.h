@@ -78,6 +78,18 @@ long emit_connections(Str *out, long *addr, const Target *t, const Adventure *ad
 /* PORT: drb.php:651-713 generateVocabulary. */
 void emit_vocabulary(Str *out, long *addr, const Adventure *adv);
 
+/* -srcmap: DDB addresses of each entry record and of each emitted
+   condact's first byte (INDIR prefix included), one cond per owning
+   entry - a shared entry's conds sit on the bytes it points at. */
+typedef struct { long proc, entry, record; } ProcEntryAddr;
+typedef struct { const ProcEntryAddr *owner; long addr; int src; } ProcCondAddr;
+VEC_DECLARE(ProcEntryAddr, ProcEntryAddr *)
+VEC_DECLARE(ProcCondAddr, ProcCondAddr *)
+typedef struct {
+    Vec_ProcEntryAddr *entries;
+    Vec_ProcCondAddr *conds;
+} ProcAddrs;
+
 /* PORT: drb.php:819-1225 generateProcesses - pass-zero condact
    rewrites (PROCESS existence check, XMES/XUNDONE/XPLAY/GETKEY/XDATA/
    XSPLITSCR and the eight deprecated condacts, PAUSE/BEEP duration
@@ -89,8 +101,10 @@ void emit_vocabulary(Str *out, long *addr, const Adventure *adv);
    threaded explicitly; the PHP reads a global. Sets no return value:
    the caller computes the process table's own offset as
    `*addr - 2*process_count` after this returns, as drb.php:2033
-   does. */
-void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *adv, int verbose);
+   does. A non-NULL map gets both of its lists filled; the bytes do
+   not depend on it. */
+void emit_processes(Str *out, long *addr, Diag *d, const Target *t, Adventure *adv, int verbose,
+                    ProcAddrs *map);
 
 /* PORT: drb.php:50-53 XPLAY_* value indices into mml_to_beep's values[4]
    (octave/volume/length/tempo state, carried across the whole MML

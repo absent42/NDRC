@@ -1,11 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* src/back/srcmap.c - DSM v2 source map writer and CRC-32.
    Copyright (C) 2026 Dan Gibson. */
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L   /* getcwd */
+#endif
 #include "back/srcmap.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#define NDRC_GETCWD _getcwd
+#else
+#include <unistd.h>
+#define NDRC_GETCWD getcwd
+#endif
 
 typedef struct { int proc, file, line; } ProcRec;
 typedef struct { unsigned off; int file, line; } EntryRec;
@@ -159,7 +169,156 @@ int srcmap_write(const SrcMap *m, const char *path, const uint8_t *ddb, size_t l
         fprintf(f, "sym\t%s\t%ld\n", m->syms.v[i].name, m->syms.v[i].value);
     if (ferror(f)) {
         fclose(f);
+        remove(path);
         return 1;
     }
-    return fclose(f) != 0;
+    if (fclose(f) != 0) {
+        remove(path);
+        return 1;
+    }
+    return 0;
+}
+
+/* ---- relative paths ---- */
+
+/* A path split into a root ("" relative, "/" rooted, "C:" a drive,
+   "//host/share" UNC) and its segments with "." and ".." folded. */
+typedef struct {
+    char root[260];
+    char *seg[256];
+    int n;
+    char *buf;
+} SplitPath;
+
+static int is_sep(char c) { return c == '/' || c == '\\'; }
+
+static void split_path(SplitPath *p, const char *path)
+{
+    size_t len = strlen(path), i = 0, r = 0;
+    char *s;
+
+    p->buf = dup_str(path);
+    s = p->buf;
+    p->n = 0;
+    p->root[0] = '\0';
+    if (len >= 2 && s[1] == ':' && ((s[0] | 0x20) >= 'a' && (s[0] | 0x20) <= 'z')) {
+        p->root[r++] = s[0]; p->root[r++] = ':';
+        i = 2;
+    } else if (len >= 2 && is_sep(s[0]) && is_sep(s[1])) {
+        int parts = 0;
+        p->root[r++] = '/'; p->root[r++] = '/';
+        i = 2;
+        while (i < len && parts < 2 && r < sizeof p->root - 2) {
+            if (is_sep(s[i])) { if (++parts == 2) break; p->root[r++] = '/'; }
+            else p->root[r++] = s[i];
+            i++;
+        }
+    }
+    if (i < len && is_sep(s[i])) p->root[r++] = '/';
+    p->root[r] = '\0';
+    while (i < len) {
+        size_t start;
+        while (i < len && is_sep(s[i])) i++;
+        start = i;
+        while (i < len && !is_sep(s[i])) i++;
+        if (i < len) s[i++] = '\0';
+        if (start == i || s[start] == '\0' || strcmp(s + start, ".") == 0) continue;
+        if (strcmp(s + start, "..") == 0 && p->n > 0 && strcmp(p->seg[p->n - 1], "..") != 0) {
+            p->n--;
+            continue;
+        }
+        if (p->n < 256) p->seg[p->n++] = s + start;
+    }
+}
+
+static int name_eq(const char *a, const char *b)
+{
+#ifdef _WIN32
+    for (; *a && *b; a++, b++) {
+        int x = (unsigned char)*a, y = (unsigned char)*b;
+        if (x >= 'A' && x <= 'Z') x += 32;
+        if (y >= 'A' && y <= 'Z') y += 32;
+        if (x != y) return 0;
+    }
+    return *a == *b;
+#else
+    return strcmp(a, b) == 0;
+#endif
+}
+
+/* `path` made absolute against the cwd; malloc'd. */
+static char *absolute(const char *path)
+{
+    char cwd[4096];
+    char *out;
+    size_t n;
+    if (path[0] && path[1] == ':') return dup_str(path);
+    if (NDRC_GETCWD(cwd, sizeof cwd) == NULL) return dup_str(path);
+    if (is_sep(path[0])) {
+#ifdef _WIN32
+        /* rooted on the cwd's drive */
+        if (cwd[0] && cwd[1] == ':') cwd[2] = '\0';
+        else return dup_str(path);
+#else
+        return dup_str(path);
+#endif
+    }
+    n = strlen(cwd) + 1 + strlen(path) + 1;
+    out = malloc(n);
+    if (!out) {
+        fputs("ndrc: out of memory\n", stderr);
+        exit(1);
+    }
+    snprintf(out, n, "%s/%s", cwd, path);
+    return out;
+}
+
+static void append(char **out, size_t *len, size_t *cap, const char *s)
+{
+    size_t n = strlen(s);
+    if (*len + n + 1 > *cap) {
+        size_t nc = (*len + n + 1) * 2;
+        char *p = realloc(*out, nc);
+        if (!p) {
+            fputs("ndrc: out of memory\n", stderr);
+            exit(1);
+        }
+        *out = p;
+        *cap = nc;
+    }
+    memcpy(*out + *len, s, n + 1);
+    *len += n;
+}
+
+char *srcmap_rel_path(const char *dsm_path, const char *file)
+{
+    char *da = absolute(dsm_path), *fa = absolute(file);
+    SplitPath d, f;
+    char *out = NULL;
+    size_t len = 0, cap = 0;
+    int i, common = 0;
+
+    split_path(&d, da);
+    split_path(&f, fa);
+    free(da);
+    free(fa);
+    if (d.n > 0) d.n--;   /* the DSM's own name */
+    if (!name_eq(d.root, f.root)) {
+        append(&out, &len, &cap, f.root);
+        for (i = 0; i < f.n; i++) {
+            if (i > 0) append(&out, &len, &cap, "/");
+            append(&out, &len, &cap, f.seg[i]);
+        }
+    } else {
+        while (common < d.n && common < f.n && name_eq(d.seg[common], f.seg[common])) common++;
+        append(&out, &len, &cap, "");
+        for (i = common; i < d.n; i++) append(&out, &len, &cap, "../");
+        for (i = common; i < f.n; i++) {
+            if (i > common) append(&out, &len, &cap, "/");
+            append(&out, &len, &cap, f.seg[i]);
+        }
+    }
+    free(d.buf);
+    free(f.buf);
+    return out;
 }

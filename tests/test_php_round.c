@@ -173,7 +173,7 @@ TEST(emit_processes_pauses_through_php_round)
     vec_push_ProcEntry(p->entries, e);
     vec_push_Process(adv.processes, p);
 
-    emit_processes(out, &addr, d, t, &adv, 0);
+    emit_processes(out, &addr, d, t, &adv, 0, NULL);
 
     /* The pass-zero rewrite adjusted the condact in place... */
     CHECK_INT(c->Param1, 58);

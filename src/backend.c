@@ -12,7 +12,9 @@
    `Error($msg)` is diag_fatal(d, msg) then `return diag_exit_code(d)` -
    see main.c's file header for that mapping and for the stdout stream
    redirect this stage relies on. */
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "arena.h"
@@ -29,6 +31,8 @@
 #include "back/emit.h"
 #include "back/emit_hdr.h"
 #include "back/finish.h"
+#include "back/srcmap.h"
+#include "front/srcpos.h"
 
 /* NDRC's own usage text (drb.php's Syntax() has no analogue for a
    wrapped --from-json subcommand - see the file header PORT NOTE).
@@ -116,6 +120,65 @@ static void print_map_line(int verbose, const char *label, long value)
 static int xmes_check_maluva(void) { return 0; }
 static int xmes_maluva_embedded(void) { return 1; }
 
+/* -srcmap: source file name to DSM file index, each name resolved once. */
+typedef struct { const char *name; int id; } SrcFileId;
+
+static int srcmap_file_id(SrcMap *m, const char *dsm_path, SrcFileId *cache,
+                          int *n, const char *name)
+{
+    char *rel;
+    int i, id;
+    for (i = 0; i < *n; i++)
+        if (strcmp(cache[i].name, name) == 0) return cache[i].id;
+    rel = srcmap_rel_path(dsm_path, name);
+    id = srcmap_file(m, rel);
+    free(rel);
+    if (*n < 64) {
+        cache[*n].name = name;
+        cache[*n].id = id;
+        (*n)++;
+    }
+    return id;
+}
+
+/* The DSM for the written DDB, from the front end's srcpos table. shift
+   turns a DDB address into a file offset. Returns 1 on success. */
+static int write_srcmap(const char *path, const ProcAddrs *pa, long shift,
+                        const uint8_t *ddb, size_t len)
+{
+    SrcMap *m = srcmap_new();
+    SrcFileId cache[64];
+    int ncache = 0, i, rc;
+    size_t k;
+
+    for (i = 0; i < srcpos_proc_count(); i++) {
+        SrcPos p = srcpos_proc(i);
+        if (p.file != NULL)
+            srcmap_proc(m, i, srcmap_file_id(m, path, cache, &ncache, p.file), p.line);
+    }
+    for (k = 0; pa->entries != NULL && k < vec_len_ProcEntryAddr(pa->entries); k++) {
+        const ProcEntryAddr *e = vec_at_ProcEntryAddr(pa->entries, k);
+        SrcPos p = srcpos_entry((int)e->proc, (int)e->entry);
+        if (p.file != NULL)
+            srcmap_entry(m, (unsigned)(e->record + shift),
+                         srcmap_file_id(m, path, cache, &ncache, p.file), p.line);
+    }
+    for (k = 0; pa->conds != NULL && k < vec_len_ProcCondAddr(pa->conds); k++) {
+        const ProcCondAddr *c = vec_at_ProcCondAddr(pa->conds, k);
+        SrcPos p;
+        if (c->src < 0) continue;
+        p = srcpos_cond((int)c->owner->proc, (int)c->owner->entry, c->src);
+        if (p.file != NULL)
+            srcmap_cond(m, (unsigned)(c->addr + shift), (unsigned)(c->owner->record + shift),
+                        srcmap_file_id(m, path, cache, &ncache, p.file), p.line, p.col);
+    }
+    for (i = 0; i < srcpos_define_count(); i++)
+        srcmap_sym(m, srcpos_define_name(i), srcpos_define_value(i));
+    rc = srcmap_write(m, path, ddb, len);
+    srcmap_free(m);
+    return rc == 0;
+}
+
 int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
                 size_t json_len, const BackendOptions *opts)
 {
@@ -145,6 +208,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     long offsets[NDRC_HEADER_PATCH_WORDS];
     long ddb_size;
     FILE *fp;
+    ProcAddrs proc_addrs = { NULL, NULL };
+    size_t unprefixed_len;
 
     if (opts->target_arg == NULL) {
         diag_fatal(d, "%s", BACKEND_USAGE_MSG);
@@ -626,7 +691,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        - guard and halt exactly as DRC halts at its first error, before
        computing an offset from a possibly-incomplete address or
        writing anything to disk. */
-    emit_processes(out, &addr, d, target, adv, opts->verbose);
+    emit_processes(out, &addr, d, target, adv, opts->verbose,
+                   opts->srcmap_path != NULL ? &proc_addrs : NULL);
     if (diag_error_count(d) > 0) return diag_exit_code(d);
     process_list_offset = addr - 2 * (long)vec_len_Process(adv->processes);
     print_map_line(opts->verbose, "Processes         ", process_list_offset);
@@ -769,6 +835,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        file it already wrote and rewriting it, which this port skips by
        mutating the in-memory Str before the single fwrite below - only
        the resulting bytes are ported, not PHP's rewrite mechanism. */
+    unprefixed_len = str_len(out);
     if (opts->prepend_c64) {
         if (opts->verbose) printf("Adding Commodore header\n");
         finish_prepend_c64(out, base_address);
@@ -791,6 +858,16 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     }
     fwrite(str_bytes(out), 1, str_len(out), fp);
     fclose(fp);
+
+    if (opts->srcmap_path != NULL) {
+        long shift = (long)(str_len(out) - unprefixed_len) - base_address;
+        if (!write_srcmap(opts->srcmap_path, &proc_addrs, shift,
+                          (const uint8_t *)str_bytes(out), str_len(out))) {
+            diag_fatal(d, "Can't create source map file %s", opts->srcmap_path);
+            return diag_exit_code(d);
+        }
+        if (opts->verbose) printf("Source map written to %s.\n", opts->srcmap_path);
+    }
 
     /* PORT: drb.php:2129-2131. */
     if (strcmp(target->name, "HTML") == 0) {

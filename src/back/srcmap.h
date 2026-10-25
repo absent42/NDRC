@@ -23,6 +23,11 @@ void srcmap_cond(SrcMap *m, unsigned off, unsigned entry_record_off,
                  int file, int line, int col);
 void srcmap_sym(SrcMap *m, const char *name, long value);
 
+/* `file` relative to the directory holding `dsm_path`, '/' separated;
+   absolute when no relative path exists (another drive). Relative
+   inputs resolve against the cwd. Returns malloc'd storage. */
+char *srcmap_rel_path(const char *dsm_path, const char *file);
+
 /* Writes the DSM v2 text for the given DDB image. 0 ok, non-zero on I/O failure. */
 int srcmap_write(const SrcMap *m, const char *path, const uint8_t *ddb, size_t len);
 

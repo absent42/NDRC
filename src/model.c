@@ -634,6 +634,7 @@ Adventure *model_from_json(Arena *a, Diag *d, const JsonValue *root)
                    pass-zero condact rewrite (drb.php:870-893), which is
                    out of Task 4's scope. */
                 co->DurationAdjusted = 0;
+                co->src = (int)k;
                 vec_push_Condact(pe->condacts, co);
             }
             vec_push_ProcEntry(proc->entries, pe);

@@ -27,6 +27,7 @@ typedef struct {
     int auto_tokens;            /* -auto-tokens: select per-game tokens */
     int tok_tee;                /* --tok seen (implies auto_tokens) */
     const char *tok_tee_path;   /* --tok=path; NULL = derive <input>.tok */
+    const char *srcmap_path;    /* -srcmap=path; NULL = no source map */
     /* The caller's option-loop verdict. drb reports
        parseOptionalParameters' errors from its call site
        (drb.php:1769), after the Target line and the JSON decode, so a

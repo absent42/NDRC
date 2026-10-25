@@ -1766,6 +1766,97 @@ def test_join_json_tee_matches_to_json_byte_for_byte():
               f"got {out!r}")
 
 
+def _dsm_records(text: str) -> dict:
+    recs: dict = {}
+    for line in text.splitlines()[1:]:
+        f = line.split("\t")
+        recs.setdefault(f[0], []).append(f[1:])
+    return recs
+
+
+def test_join_srcmap_writes_dsm_v2():
+    """-srcmap=out/x.dsm: DSM v2 whose ddb record is the CRC-32 and size
+    of the written DDB, whose file paths are relative to out/, whose
+    entry and cond records agree with the entry table, and whose DDB
+    equals the one built without -srcmap."""
+    import zlib
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = _join_dir(tmp)
+        (tmpdir / "out").mkdir()
+        rc, out = run(["NEXTDAAD", "EN", "g.dsf", "plain.ddb", "-v3"],
+                      cwd=str(tmpdir))
+        check(rc == 0, f"srcmap: plain join exited {rc}\n{out}")
+        rc, out = run(["NEXTDAAD", "EN", "g.dsf", "g.ddb", "-v3",
+                       "-srcmap=out/x.dsm"], cwd=str(tmpdir))
+        check(rc == 0, f"srcmap: join exited {rc}\n{out}")
+        dsm = tmpdir / "out" / "x.dsm"
+        ddb_path = tmpdir / "g.ddb"
+        check(dsm.exists(), "srcmap: out/x.dsm not written")
+        check(ddb_path.exists(), "srcmap: -srcmap was taken as the DDB name")
+        if not dsm.exists() or not ddb_path.exists():
+            return
+        ddb = ddb_path.read_bytes()
+        check(ddb == (tmpdir / "plain.ddb").read_bytes(),
+              "srcmap: DDB differs with -srcmap")
+        text = dsm.read_text(encoding="utf-8")
+        check(text.startswith("NDRC-DSM\t2\n"),
+              f"srcmap: bad header {text[:20]!r}")
+        recs = _dsm_records(text)
+        want = [f"{zlib.crc32(ddb):08X}", f"{len(ddb):X}"]
+        check(recs.get("ddb") == [want],
+              f"srcmap: ddb record {recs.get('ddb')} != {want}")
+        check(recs.get("file") == [["0", "../g.dsf"]],
+              f"srcmap: file records {recs.get('file')}")
+        entries = {int(e[0], 16) for e in recs.get("entry", [])}
+        conds = recs.get("cond", [])
+        check(len(entries) > 0 and len(conds) > 0,
+              "srcmap: no entry or cond records")
+        lines = (tmpdir / "g.dsf").read_text(encoding="latin-1").splitlines()
+        first: dict = {}
+        for c in conds:
+            off, owner = int(c[0], 16), int(c[1], 16)
+            line, col = int(c[3]), int(c[4])
+            check(owner in entries,
+                  f"srcmap: cond {c} names no entry record")
+            check(off < len(ddb), f"srcmap: cond {c} past the DDB end")
+            src = lines[line - 1][col - 1:] if 0 < line <= len(lines) else ""
+            check(src[:1].isalpha() or src[:1] == "#",
+                  f"srcmap: cond {c} points at {src!r}")
+            first.setdefault(owner, off)
+        for e in entries:
+            body = ddb[e + 2] | (ddb[e + 3] << 8)
+            if e in first:
+                check(first[e] == body,
+                      f"srcmap: entry {e:04X} body {body:04X} but first "
+                      f"cond {first[e]:04X}")
+
+
+def test_join_srcmap_with_np_writes_no_dsm():
+    """-np exits from inside the first pad, before the DSM is written."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = _join_dir(tmp)
+        rc, out = run(["NEXTDAAD", "EN", "g.dsf", "g.ddb", "-v3", "-np",
+                       "-srcmap=x.dsm"], cwd=str(tmpdir))
+        check(rc == 0, f"srcmap -np: exited {rc}\n{out}")
+        check(not (tmpdir / "x.dsm").exists(),
+              "srcmap -np: a DSM was written")
+
+
+def test_from_json_srcmap_refused():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = Path(tmp)
+        inp = _fixture_copy(tmpdir)
+        rc, out = run(["--from-json", "NEXTDAAD", "EN", str(inp),
+                       str(tmpdir / "o.ddb"), "-srcmap=" + str(tmpdir / "x.dsm")])
+        check(rc != 0, f"from-json srcmap: expected failure, got {rc}")
+        check(out == "Error: -srcmap needs a .DSF source input.\n",
+              f"from-json srcmap: unexpected stdout {out!r}")
+        check(not (tmpdir / "o.ddb").exists(),
+              "from-json srcmap: a DDB was written")
+        check(not (tmpdir / "x.dsm").exists(),
+              "from-json srcmap: a DSM was written")
+
+
 def test_join_json_tee_survives_a_drb_stage_failure():
     """The tee is written immediately after the drf stage, so a drb
     refusal (XMSG's XDATA check) still leaves the diagnostic JSON, equal

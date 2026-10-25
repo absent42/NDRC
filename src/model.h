@@ -82,6 +82,7 @@ typedef struct {
     long Indirection1, Indirection2;
     const char *Condact;
     int DurationAdjusted;
+    int src;    /* index in the JSON entry's condacts, -1 = none (-srcmap) */
 } Condact;
 
 VEC_DECLARE(Condact, Condact *)
