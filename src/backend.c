@@ -615,7 +615,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        string literal - S12.8, dropped deliberately, not a typo in our
        port. */
     object_weight_attr_offset = addr;
-    emit_object_weight_attr(out, &addr, d, adv);
+    emit_object_weight_attr(out, &addr, d, adv,
+                            ts->optimal_encode ? vec_at_MsgTable(pre_texts, 4)
+                                               : adv->objects);
     layout_pad(out, &addr, target);
     objweight_size = addr - previous_address;
     previous_address = addr;

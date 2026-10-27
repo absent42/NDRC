@@ -68,8 +68,10 @@ int emit_xmessages(Diag *d, const Target *t, Adventure *adv);
 void emit_object_names(Str *out, long *addr, const Adventure *adv);
 
 /* PORT: drb.php:737-755 generateObjectWeightAndAttr, including the two
-   container warnings (drb.php:747, 749), reported via diag_note. */
-void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv);
+   container warnings (drb.php:747, 749), reported via diag_note.
+   object_texts supplies the warning's object text (uncompressed). */
+void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv,
+                             const Vec_Message *object_texts);
 
 /* PORT: drb.php:757-765 generateObjectExtraAttr. */
 void emit_object_extra_attr(Str *out, long *addr, const Target *t, const Adventure *adv);

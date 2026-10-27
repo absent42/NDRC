@@ -416,6 +416,46 @@ TEST(tee_written_only_after_file_check)
     remove(tok);
 }
 
+/* The container warning line holds the plain text, no reference byte. */
+static int container_warning_ok(const char *logpath, const char *text)
+{
+    FILE *f = fopen(logpath, "rb");
+    char line[1024];
+    const unsigned char *c;
+    int ok = 0;
+
+    if (f == NULL) return 0;
+    while (fgets(line, sizeof line, f) != NULL) {
+        if (strstr(line, "is a container.") == NULL) continue;
+        for (c = (const unsigned char *)line; *c != '\0'; c++)
+            if (*c >= 0x80) { fclose(f); return 0; }
+        if (strstr(line, text) != NULL) ok = 1;
+    }
+    fclose(f);
+    return ok;
+}
+
+TEST(container_warning_prints_source_text)
+{
+    char out0[512], logp[512], args[1600];
+    const char *want = "Warning: object #0 (a brass lantern of the old kind) "
+                       "is a container.";
+
+    scratch_path(out0, sizeof out0, "cw.ddb");
+    scratch_path(logp, sizeof logp, "cw_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\"", OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(logp, "has a description."));
+    CHECK(container_warning_ok(logp, want));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(logp, "has a description."));
+    CHECK(container_warning_ok(logp, want));
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
@@ -426,5 +466,6 @@ int main(void)
     RUN(flag_off_rows_untouched);
     RUN(verbose_reports_objects_and_shares);
     RUN(tee_written_only_after_file_check);
+    RUN(container_warning_prints_source_text);
     return test_summary("autotok");
 }
