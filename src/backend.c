@@ -482,7 +482,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
             }
             if (opts->verbose) printf("Auto-selecting compression tokens.\n");
             ts = tokselect_run(a, d, adv,
-                               strcmp(target->name, "NEXTDAAD") != 0);
+                               strcmp(target->name, "NEXTDAAD") != 0, 1);
         } else {
             override = tokens_load_override(a, d, opts->input_name, &resolved_path);
             if (override != NULL) {
@@ -618,17 +618,17 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        transcript's order exactly. */
     compressed_text_offset = ts->has_tokens ? addr : 0;
     print_map_line(opts->verbose, "Tokens            ", compressed_text_offset);
-    if (ts->optimal_encode) pre_texts = tokselect_snapshot(a, adv);
+    if (ts->optimal_encode) pre_texts = tokselect_snapshot(a, adv, 1);
     {
         Vec_Str *final_tokens;
         if (ts->optimal_encode && opts->verbose)
             printf("Optimal-parse text encoding.\n");
         final_tokens = ts->optimal_encode
-            ? tokselect_compress(a, d, adv, ts, classic, &text_savings)
+            ? tokselect_compress(a, d, adv, ts, classic, 1, &text_savings)
             : tokens_compress(a, d, adv, ts, classic, &text_savings);
         if (final_tokens == NULL) return diag_exit_code(d);
         if (ts->optimal_encode) {
-            if (!tokselect_verify(pre_texts, adv, final_tokens)) {
+            if (!tokselect_verify(pre_texts, adv, final_tokens, 1)) {
                 diag_fatal(d, "auto-tokens self-check failed: compressed "
                               "text does not decode back to source");
                 return diag_exit_code(d);

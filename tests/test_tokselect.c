@@ -72,6 +72,7 @@ static Adventure *adv_new(Arena *a)
     adv->sysmess = vec_new_Message(a);
     adv->locations = vec_new_Message(a);
     adv->xmessages = vec_new_Message(a);
+    adv->objects = vec_new_Message(a);
     return adv;
 }
 
@@ -107,7 +108,7 @@ TEST(select_finds_the_obvious_token)
     Str *t;
 
     add_msg(a, adv->messages, "XYXYXYXY");
-    ts = tokselect_run(a, d, adv, 0);
+    ts = tokselect_run(a, d, adv, 0, 0);
     CHECK_INT(ts->has_tokens, 1);
     CHECK_INT(ts->advanced, 1);
     CHECK_STR(ts->compression, "advanced");
@@ -135,8 +136,8 @@ TEST(select_is_deterministic)
                 "You are standing in a narrow stone corridor. The corridor "
                 "runs north and south. ");
     }
-    CHECK(tokensets_equal(tokselect_run(a, d, adv, 0),
-                          tokselect_run(a, d, adv, 0)));
+    CHECK(tokensets_equal(tokselect_run(a, d, adv, 0, 0),
+                          tokselect_run(a, d, adv, 0, 0)));
     arena_free(a);
 }
 
@@ -153,7 +154,7 @@ TEST(select_orders_longest_first)
         add_msg(a, adv->messages, "MNMNMNMNMNMNMNMNMNMN");
         add_msg(a, adv->messages, "GHIJKLGHIJKL");
     }
-    ts = tokselect_run(a, d, adv, 0);
+    ts = tokselect_run(a, d, adv, 0, 0);
     CHECK(vec_len_Str(ts->tokens) >= 3);
     /* entry 0 is the 0x00 byte; from entry 1 on lengths never grow */
     for (i = 2; i < vec_len_Str(ts->tokens); i++) {
@@ -186,8 +187,8 @@ TEST(select_placeholder_exclusion)
         add_msg(a, adv1->messages, "QR_STQR_STQR_ST");
         add_msg(a, adv2->messages, "QR_STQR_STQR_ST");
     }
-    CHECK(any_token_contains(tokselect_run(a, d, adv1, 0), '_'));
-    CHECK(!any_token_contains(tokselect_run(a, d, adv2, 1), '_'));
+    CHECK(any_token_contains(tokselect_run(a, d, adv1, 0, 0), '_'));
+    CHECK(!any_token_contains(tokselect_run(a, d, adv2, 1, 0), '_'));
     arena_free(a);
 }
 
@@ -198,12 +199,12 @@ TEST(select_empty_and_tiny_input)
     Adventure *adv = adv_new(a);
     TokenSet *ts;
 
-    ts = tokselect_run(a, d, adv, 0);      /* no text at all */
+    ts = tokselect_run(a, d, adv, 0, 0);      /* no text at all */
     CHECK_INT((long)vec_len_Str(ts->tokens), 1);
     CHECK_INT(ts->has_tokens, 1);
 
     add_msg(a, adv->messages, "A");        /* below min candidate len */
-    ts = tokselect_run(a, d, adv, 0);
+    ts = tokselect_run(a, d, adv, 0, 0);
     CHECK_INT((long)vec_len_Str(ts->tokens), 1);
     arena_free(a);
 }
@@ -230,7 +231,7 @@ TEST(select_caps_at_128)
         msg[8] = '\0';
         add_msg(a, adv->messages, msg);
     }
-    ts = tokselect_run(a, d, adv, 0);
+    ts = tokselect_run(a, d, adv, 0, 0);
     CHECK_INT((long)vec_len_Str(ts->tokens), 129);   /* 0x00 + 128 cap */
     for (k = 1; k < vec_len_Str(ts->tokens); k++) {
         CHECK(str_len(vec_at_Str(ts->tokens, k)) >= 2);
@@ -253,15 +254,15 @@ TEST(snapshot_verify_roundtrip_and_tamper)
     add_msg(a, adv->locations, "THE MAT IS ON THE FLOOR BY THE CAT.");
     add_msg(a, adv->sysmess, "OK.");
 
-    ts = tokselect_run(a, d, adv, 0);
-    before = tokselect_snapshot(a, adv);
+    ts = tokselect_run(a, d, adv, 0, 0);
+    before = tokselect_snapshot(a, adv, 0);
     final_tokens = tokens_compress(a, d, adv, ts, 0, &savings);
 
-    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 1);
 
     /* Tampered text must fail the check. */
     str_push(vec_at_Message(adv->messages, 0)->Text, 'Z');
-    CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 0);
     arena_free(a);
 }
 
@@ -276,10 +277,10 @@ TEST(verify_catches_wrong_table)
     long savings = 0;
 
     add_msg(a, adv->messages, "ABABABABABAB CDCDCDCDCDCD");
-    ts = tokselect_run(a, d, adv, 0);
-    before = tokselect_snapshot(a, adv);
+    ts = tokselect_run(a, d, adv, 0, 0);
+    before = tokselect_snapshot(a, adv, 0);
     final_tokens = tokens_compress(a, d, adv, ts, 0, &savings);
-    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 1);
 
     /* Two independent winners (AB, CD) must survive - assert it, so a
        selector change cannot quietly hollow this test out. */
@@ -290,7 +291,7 @@ TEST(verify_catches_wrong_table)
         Str *t2 = vec_at_Str(final_tokens, 2);
         vec_set_Str(final_tokens, 1, t2);
         vec_set_Str(final_tokens, 2, t1);
-        CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+        CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 0);
     }
     arena_free(a);
 }
@@ -367,7 +368,7 @@ TEST(selector_result_is_marked)
     TokenSet *ts;
 
     add_msg(a, adv->messages, "MNMNMNMNMNMN");
-    ts = tokselect_run(a, d, adv, 0);
+    ts = tokselect_run(a, d, adv, 0, 0);
     CHECK_INT(ts->optimal_encode, 1);
     arena_free(a);
 }
@@ -383,7 +384,7 @@ TEST(write_tok_roundtrip)
     size_t i;
 
     add_msg(a, adv->messages, "WATERWATERWATERWATER EVERYWHEREEVERYWHERE");
-    ts = tokselect_run(a, d, adv, 0);
+    ts = tokselect_run(a, d, adv, 0, 0);
     CHECK(vec_len_Str(ts->tokens) >= 2);
 
     scratch_path(tok, sizeof tok, "ndrc_tsel_rt.tok");
@@ -415,13 +416,13 @@ TEST(write_tok_roundtrip)
     arena_free(a);
 }
 
-/* Collects the four compressable tables' texts, snapshot-side. */
+/* Collects the compressable tables' texts, snapshot-side. */
 static Vec_Str *snapshot_strings(Arena *a, const Vec_MsgTable *snap)
 {
     Vec_Str *out = vec_new_Str(a);
     size_t t, k;
 
-    for (t = 0; t < 4; t++) {
+    for (t = 0; t < TOKSEL_TABLES; t++) {
         Vec_Message *tab = vec_at_MsgTable(snap, t);
         for (k = 0; k < vec_len_Message(tab); k++)
             vec_push_Str(out, vec_at_Message(tab, k)->Text);
@@ -465,8 +466,8 @@ TEST(compress_optimal_beats_sequential_shape)
         { 'X', 0x80, 'Y', 'X', 0x80, 'Y', 'X', 0x80, 'Y' };
 
     add_msg(a, adv->messages, "XABCYXABCYXABCY");
-    before = tokselect_snapshot(a, adv);
-    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    before = tokselect_snapshot(a, adv, 0);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, 0, &savings);
 
     CHECK(final_tokens != NULL);
     CHECK_INT((long)vec_len_Str(final_tokens), 2);   /* 0x00 + ABC */
@@ -474,11 +475,11 @@ TEST(compress_optimal_beats_sequential_shape)
     CHECK_INT((long)str_len(enc), 9);
     CHECK(memcmp(str_bytes(enc), want, 9) == 0);
     CHECK_INT(savings, 6);                            /* 15 - 9 */
-    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 1);
 
     /* Spec's tamper bullet, against THIS encoder's output. */
     str_push(vec_at_Message(adv->messages, 0)->Text, 'Z');
-    CHECK_INT(tokselect_verify(before, adv, final_tokens), 0);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 0);
     arena_free(a);
 }
 
@@ -495,8 +496,8 @@ TEST(compress_cost_matches_parse_total)
 
     add_msg(a, adv->messages, "THE CAT AND THE DOG AND THE FOX");
     add_msg(a, adv->locations, "THE THIN PATH THREADS THE HILL");
-    before = tokselect_snapshot(a, adv);
-    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    before = tokselect_snapshot(a, adv, 0);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, 0, &savings);
     CHECK(final_tokens != NULL);
 
     orig = snapshot_strings(a, before);
@@ -506,7 +507,7 @@ TEST(compress_cost_matches_parse_total)
         encoded += (long)str_len(vec_at_Message(adv->locations, k)->Text);
     t = tokselect_parse_total(a, orig, final_tokens);
     CHECK_INT(encoded, t);
-    CHECK_INT(tokselect_verify(before, adv, final_tokens), 1);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 1);
     arena_free(a);
 }
 
@@ -520,7 +521,7 @@ TEST(compress_prunes_unused_token)
     long savings = 99;
 
     add_msg(a, adv->messages, "AAAA");
-    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, 0, &savings);
     CHECK(final_tokens != NULL);
     CHECK_INT((long)vec_len_Str(final_tokens), 1);   /* entry 0 only */
     CHECK_INT(savings, 0);
@@ -538,7 +539,7 @@ TEST(compress_classic_padding)
     size_t k;
 
     add_msg(a, adv->messages, "MNMNMNMNMNMN");
-    final_tokens = tokselect_compress(a, d, adv, ts, 1, &savings);
+    final_tokens = tokselect_compress(a, d, adv, ts, 1, 0, &savings);
     CHECK(final_tokens != NULL);
     CHECK_INT((long)vec_len_Str(final_tokens), 128);
     /* Fillers are literal single spaces and are never referenced:
@@ -590,11 +591,104 @@ TEST(compress_guard_trips_past_128_tokens)
         tokbuf[0] = x; tokbuf[1] = y; tokbuf[2] = '\0';
         vec_push_Str(ts->tokens, str_from(a, tokbuf));
     }
-    final_tokens = tokselect_compress(a, d, adv, ts, 0, &savings);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, 0, &savings);
     CHECK(final_tokens == NULL);
     CHECK(diag_error_count(d) > 0);
     if (sink != NULL) fclose(sink);
     remove(sinkpath);
+    arena_free(a);
+}
+
+TEST(select_picks_token_from_object_texts)
+{
+    /* Only object texts repeat; with_objects=1 must select at least
+       one token, with_objects=0 none. */
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *on, *off;
+    int i;
+
+    add_msg(a, adv->messages, "zq");
+    for (i = 0; i < 4; i++) add_msg(a, adv->objects, "lantern of brass");
+    on = tokselect_run(a, d, adv, 0, 1);
+    off = tokselect_run(a, d, adv, 0, 0);
+    CHECK(vec_len_Str(on->tokens) >= 2);
+    CHECK_INT((long)vec_len_Str(off->tokens), 1);
+    arena_free(a);
+}
+
+TEST(select_objects_empty_is_noop)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *x, *y;
+
+    add_msg(a, adv->messages, "XYXYXYXY");
+    x = tokselect_run(a, d, adv, 0, 0);
+    y = tokselect_run(a, d, adv, 0, 1);
+    CHECK_INT((long)vec_len_Str(x->tokens), 2);
+    CHECK(tokensets_equal(x, y));
+    arena_free(a);
+}
+
+TEST(snapshot_verify_covers_objects)
+{
+    /* The object text holds a token use; verify must cover slot 4. */
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "AB", NULL);
+    Vec_MsgTable *before;
+    Vec_Str *final_tokens;
+    long savings = 0;
+
+    add_msg(a, adv->messages, "ABABAB");
+    add_msg(a, adv->objects, "AB");
+    before = tokselect_snapshot(a, adv, 1);
+    CHECK_INT((long)vec_len_MsgTable(before), TOKSEL_TABLES);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, 1, &savings);
+    CHECK(final_tokens != NULL);
+    CHECK_INT((long)str_len(vec_at_Message(adv->objects, 0)->Text), 1);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 1), 1);
+
+    str_push(vec_at_Message(adv->objects, 0)->Text, 'Z');
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 1), 0);
+    arena_free(a);
+}
+
+TEST(compress_savings_include_objects)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "AB", NULL);
+    long savings = 0;
+
+    add_msg(a, adv->messages, "ABABAB");
+    add_msg(a, adv->objects, "AB");
+    CHECK(tokselect_compress(a, d, adv, ts, 0, 1, &savings) != NULL);
+    CHECK_INT(savings, 4);                            /* (6-3) + (2-1) */
+    arena_free(a);
+}
+
+TEST(select_is_deterministic_with_objects)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *x;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        add_msg(a, adv->messages, "The door is shut. ");
+        add_msg(a, adv->objects, "an old wooden door");
+        add_msg(a, adv->objects, "a rusty iron key");
+    }
+    x = tokselect_run(a, d, adv, 0, 1);
+    CHECK(vec_len_Str(x->tokens) >= 2);
+    CHECK(tokensets_equal(x, tokselect_run(a, d, adv, 0, 1)));
     arena_free(a);
 }
 
@@ -621,5 +715,10 @@ int main(void)
     RUN(compress_prunes_unused_token);
     RUN(compress_classic_padding);
     RUN(compress_guard_trips_past_128_tokens);
+    RUN(select_picks_token_from_object_texts);
+    RUN(select_objects_empty_is_noop);
+    RUN(snapshot_verify_covers_objects);
+    RUN(compress_savings_include_objects);
+    RUN(select_is_deterministic_with_objects);
     return test_summary("tokselect");
 }

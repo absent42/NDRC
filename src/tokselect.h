@@ -9,8 +9,13 @@
 #include "model.h"
 #include "tokens.h"
 
+/* Compressable table slots: locations, messages, sysmess, xmessages,
+   objects. The objects slot is live only when with_objects is set. */
+#define TOKSEL_TABLES 5
+
 /* Selects up to 128 tokens from the adventure's own compressable text
-   (locations, messages, sysmess, xmessages - the "advanced" set).
+   (locations, messages, sysmess, xmessages - the "advanced" set - plus
+   objects when with_objects).
    Returns a TokenSet shaped like tokens_load_builtin's: entry 0 is the
    single byte 0x00, live tokens follow ordered longest-first (the
    sequential compressor applies tokens in table order; longest-first
@@ -19,12 +24,13 @@
    parse. Deterministic: same input, same table, every platform.
    exclude_placeholders skips candidates containing '_' or '@'. */
 TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
-                        int exclude_placeholders);
+                        int exclude_placeholders, int with_objects);
 
-/* Deep-copies the compressable tables' Text strings, in table order
-   (locations, messages, sysmess, xmessages), for the post-compression
-   self-check. */
-Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv);
+/* Deep-copies the compressable tables' Text strings, TOKSEL_TABLES
+   tables in slot order, for the post-compression self-check. The
+   objects slot is an empty table when with_objects is 0. */
+Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv,
+                                 int with_objects);
 
 /* Expands the adventure's (already compressed) compressable tables
    through final_tokens and compares with the snapshot. 1 = identical,
@@ -32,7 +38,7 @@ Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv);
    final_tokens at byte-127, matching tokens_compress' pass-2
    delimiters. */
 int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
-                     const Vec_Str *final_tokens);
+                     const Vec_Str *final_tokens, int with_objects);
 
 /* Test seam: total optimal-parse cost of strings under tokens
    (literal byte 1, any token reference 1). tokens NULL = no tokens. */
@@ -50,6 +56,7 @@ long tokselect_parse_total(Arena *a, const Vec_Str *strings,
    reference space is 128..255); only reachable via a hand-written
    marked .tok - tokselect_run enforces the cap itself. */
 Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
-                            TokenSet *ts, int classic_mode, long *savings);
+                            TokenSet *ts, int classic_mode, int with_objects,
+                            long *savings);
 
 #endif /* NDRC_TOKSELECT_H */

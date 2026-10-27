@@ -198,26 +198,29 @@ static HeapEnt heap_pop(Heap *h)
     return top;
 }
 
-/* The compressable tables, in the fixed "advanced" order. Mirrors
-   tokens.c's get_compressable_tables for that mode. */
-static void compressable_tables(const Adventure *adv,
-                                const Vec_Message *out[4])
+/* The compressable tables: slots 0-3 mirror tokens.c's
+   get_compressable_tables "advanced" order; slot 4 is objects when
+   with_objects, else NULL (callers skip NULL slots). */
+static void compressable_tables(const Adventure *adv, int with_objects,
+                                const Vec_Message *out[TOKSEL_TABLES])
 {
     out[0] = adv->locations;
     out[1] = adv->messages;
     out[2] = adv->sysmess;
     out[3] = adv->xmessages;
+    out[4] = with_objects ? adv->objects : NULL;
 }
 
-static Vec_Str *corpus_strings(Arena *a, const Adventure *adv)
+static Vec_Str *corpus_strings(Arena *a, const Adventure *adv,
+                               int with_objects)
 {
-    const Vec_Message *tabs[4];
+    const Vec_Message *tabs[TOKSEL_TABLES];
     Vec_Str *out = vec_new_Str(a);
     size_t t, k;
 
-    compressable_tables(adv, tabs);
-    for (t = 0; t < 4; t++)
-        for (k = 0; k < vec_len_Message(tabs[t]); k++)
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; t < TOKSEL_TABLES; t++)
+        for (k = 0; tabs[t] != NULL && k < vec_len_Message(tabs[t]); k++)
             vec_push_Str(out, vec_at_Message(tabs[t], k)->Text);
     return out;
 }
@@ -280,9 +283,9 @@ static Vec_Str *vec_without(Arena *a, const Vec_Str *v, size_t skip)
 }
 
 TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
-                        int exclude_placeholders)
+                        int exclude_placeholders, int with_objects)
 {
-    Vec_Str *strings = corpus_strings(a, adv);
+    Vec_Str *strings = corpus_strings(a, adv, with_objects);
     Vec_Cand *order = vec_new_Cand(a);
     CandMap map;
     Heap heap = {0};
@@ -438,16 +441,17 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
     return ts;
 }
 
-Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv)
+Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv,
+                                 int with_objects)
 {
-    const Vec_Message *tabs[4];
+    const Vec_Message *tabs[TOKSEL_TABLES];
     Vec_MsgTable *out = vec_new_MsgTable(a);
     size_t t, k;
 
-    compressable_tables(adv, tabs);
-    for (t = 0; t < 4; t++) {
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; t < TOKSEL_TABLES; t++) {
         Vec_Message *copy = vec_new_Message(a);
-        for (k = 0; k < vec_len_Message(tabs[t]); k++) {
+        for (k = 0; tabs[t] != NULL && k < vec_len_Message(tabs[t]); k++) {
             Message *src = vec_at_Message(tabs[t], k);
             Message *m = arena_calloc(a, sizeof(*m));
             m->Text = str_new(a);
@@ -460,17 +464,18 @@ Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv)
 }
 
 int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
-                     const Vec_Str *final_tokens)
+                     const Vec_Str *final_tokens, int with_objects)
 {
-    const Vec_Message *tabs[4];
+    const Vec_Message *tabs[TOKSEL_TABLES];
     Arena *scratch = arena_new(0);
     size_t t, k, i;
     int ok = 1;
 
-    compressable_tables(adv, tabs);
-    for (t = 0; ok && t < 4; t++) {
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; ok && t < TOKSEL_TABLES; t++) {
         const Vec_Message *now = tabs[t];
         Vec_Message *was = vec_at_MsgTable(before, t);
+        if (now == NULL) continue;
         if (vec_len_Message(now) != vec_len_Message(was)) { ok = 0; break; }
         for (k = 0; ok && k < vec_len_Message(now); k++) {
             Str *enc = vec_at_Message(now, k)->Text;
@@ -501,9 +506,10 @@ int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
 }
 
 Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
-                            TokenSet *ts, int classic_mode, long *savings)
+                            TokenSet *ts, int classic_mode, int with_objects,
+                            long *savings)
 {
-    Vec_Str *strings = corpus_strings(a, adv);
+    Vec_Str *strings = corpus_strings(a, adv, with_objects);
     Vec_Str *final_tokens = vec_new_Str(a);
     long cur, original = 0, encoded = 0;
     size_t i;
@@ -557,7 +563,7 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
         TokIndex ix;
         long *dp;
         Str **choice;
-        const Vec_Message *tabs[4];
+        const Vec_Message *tabs[TOKSEL_TABLES];
         size_t maxlen = 0, t, k;
 
         tokindex_build(a, &ix, final_tokens);
@@ -567,8 +573,9 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
         dp = arena_alloc(a, (maxlen + 1) * sizeof(*dp));
         choice = arena_alloc(a, (maxlen + 1) * sizeof(*choice));
 
-        compressable_tables(adv, tabs);
-        for (t = 0; t < 4; t++) {
+        compressable_tables(adv, with_objects, tabs);
+        for (t = 0; t < TOKSEL_TABLES; t++) {
+            if (tabs[t] == NULL) continue;
             for (k = 0; k < vec_len_Message(tabs[t]); k++) {
                 Message *m = vec_at_Message(tabs[t], k);
                 const unsigned char *s = str_bytes(m->Text);
