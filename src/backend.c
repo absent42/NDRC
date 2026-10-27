@@ -499,7 +499,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
             compress_objects = 1;   /* tokselect_run always sets optimal_encode */
             ts = tokselect_run(a, d, adv,
                                strcmp(target->name, "NEXTDAAD") != 0,
-                               compress_objects);
+                               compress_objects,
+                               strcmp(target->name, "NEXTDAAD") != 0);
         } else {
             override = tokens_load_override(a, d, opts->input_name, &resolved_path);
             if (override != NULL) {
@@ -572,8 +573,12 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     if (ts->optimal_encode) {
         pre_texts = tokselect_snapshot(a, adv, compress_objects);
         if (opts->verbose) printf("Optimal-parse text encoding.\n");
+        /* Classic name printers scan stored object bytes; NEXTDAAD
+           strips decoded text. */
         final_tokens = tokselect_compress(a, d, adv, ts, classic,
-                                          compress_objects, &text_savings);
+                                          compress_objects,
+                                          strcmp(target->name, "NEXTDAAD") != 0,
+                                          &text_savings);
         if (final_tokens == NULL) return diag_exit_code(d);
         if (!tokselect_verify(pre_texts, adv, final_tokens, compress_objects)) {
             diag_fatal(d, "auto-tokens self-check failed: compressed "

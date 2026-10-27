@@ -24,20 +24,39 @@ static void tokindex_build(Arena *a, TokIndex *ix, const Vec_Str *tokens)
     }
 }
 
-/* dp[i] = cheapest encoding of s[i..n); dp sized n+1 by the caller. */
-static long parse_one(const unsigned char *s, size_t n,
-                      const TokIndex *ix, long *dp)
+size_t tokselect_protected_prefix(const unsigned char *s, size_t n)
 {
+    const unsigned char *sp = n > 0 ? memchr(s, ' ', n) : NULL;
     size_t i;
+
+    if (sp == NULL) return n;
+    for (i = (size_t)(sp - s); i < n && s[i] == ' '; i++) ;
+    return i;
+}
+
+/* Classic interpreters scan stored object bytes for the first space
+   and reject a stored '.', so tokens must not hide either. */
+static int token_has_dot(const Str *t)
+{
+    return memchr(str_bytes(t), '.', str_len(t)) != NULL;
+}
+
+/* dp[i] = cheapest encoding of s[i..n); dp sized n+1 by the caller.
+   obj_rule: classic object text - literal prefix, no '.' tokens. */
+static long parse_one(const unsigned char *s, size_t n,
+                      const TokIndex *ix, long *dp, int obj_rule)
+{
+    size_t i, prot = obj_rule ? tokselect_protected_prefix(s, n) : 0;
 
     dp[n] = 0;
     for (i = n; i-- > 0; ) {
         long best = dp[i + 1] + 1;
-        const Vec_Str *bucket = ix->by_first[s[i]];
+        const Vec_Str *bucket = i < prot ? NULL : ix->by_first[s[i]];
         size_t j;
         for (j = 0; bucket != NULL && j < vec_len_Str(bucket); j++) {
             Str *t = vec_at_Str(bucket, j);
             size_t tl = str_len(t);
+            if (obj_rule && token_has_dot(t)) continue;
             if (tl <= n - i && memcmp(s + i, str_bytes(t), tl) == 0) {
                 long v = dp[i + tl] + 1;
                 if (v < best) best = v;
@@ -59,8 +78,10 @@ static long *dp_scratch(Arena *a, const Vec_Str *strings)
     return arena_alloc(a, (maxlen + 1) * sizeof(long));
 }
 
-long tokselect_parse_total(Arena *a, const Vec_Str *strings,
-                           const Vec_Str *tokens)
+/* strings[obj_from..] are classic object texts (obj_from = length
+   when the rule is off). */
+static long parse_total(Arena *a, const Vec_Str *strings,
+                        const Vec_Str *tokens, size_t obj_from)
 {
     TokIndex ix;
     long *dp = dp_scratch(a, strings);
@@ -70,9 +91,15 @@ long tokselect_parse_total(Arena *a, const Vec_Str *strings,
     tokindex_build(a, &ix, tokens);
     for (i = 0; i < vec_len_Str(strings); i++) {
         Str *s = vec_at_Str(strings, i);
-        total += parse_one(str_bytes(s), str_len(s), &ix, dp);
+        total += parse_one(str_bytes(s), str_len(s), &ix, dp, i >= obj_from);
     }
     return total;
+}
+
+long tokselect_parse_total(Arena *a, const Vec_Str *strings,
+                           const Vec_Str *tokens)
+{
+    return parse_total(a, strings, tokens, vec_len_Str(strings));
 }
 
 #define TOKSEL_MINLEN 2
@@ -225,6 +252,17 @@ static Vec_Str *corpus_strings(Arena *a, const Adventure *adv,
     return out;
 }
 
+/* Index of the first classic object text in corpus_strings' output:
+   objects are the last slot, so they are its tail. */
+static size_t objects_from(const Vec_Str *strings, const Adventure *adv,
+                           int with_objects, int classic_objects)
+{
+    size_t n = vec_len_Str(strings);
+
+    if (!with_objects || !classic_objects || adv->objects == NULL) return n;
+    return n - vec_len_Message(adv->objects);
+}
+
 static int is_placeholder(unsigned char b)
 {
     return b == '_' || b == '@';
@@ -248,7 +286,8 @@ static int bytes_contain(const unsigned char *h, size_t hn,
    peak memory stays flat. Only pointers into the caller's arena are
    read; nothing from scratch escapes. */
 static long eval_gain(const Vec_Str *strings, const long *cache,
-                      const Vec_Str *chosen, const Cand *c, long *dp)
+                      const Vec_Str *chosen, const Cand *c, long *dp,
+                      size_t obj_from)
 {
     Arena *scratch = arena_new(0);
     Vec_Str *trial = vec_new_Str(scratch);
@@ -266,7 +305,8 @@ static long eval_gain(const Vec_Str *strings, const long *cache,
         Str *s = vec_at_Str(strings, i);
         if (!bytes_contain(str_bytes(s), str_len(s), c->ptr, c->len))
             continue;
-        gain += cache[i] - parse_one(str_bytes(s), str_len(s), &ix, dp);
+        gain += cache[i] - parse_one(str_bytes(s), str_len(s), &ix, dp,
+                                     i >= obj_from);
     }
     arena_free(scratch);
     return gain - (long)c->len;
@@ -283,9 +323,12 @@ static Vec_Str *vec_without(Arena *a, const Vec_Str *v, size_t skip)
 }
 
 TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
-                        int exclude_placeholders, int with_objects)
+                        int exclude_placeholders, int with_objects,
+                        int classic_objects)
 {
     Vec_Str *strings = corpus_strings(a, adv, with_objects);
+    size_t obj_from = objects_from(strings, adv, with_objects,
+                                   classic_objects);
     Vec_Cand *order = vec_new_Cand(a);
     CandMap map;
     Heap heap = {0};
@@ -305,13 +348,17 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
         Str *s = vec_at_Str(strings, i);
         const unsigned char *p = str_bytes(s);
         size_t n = str_len(s), pos;
-        for (pos = 0; pos + TOKSEL_MINLEN <= n; pos++) {
+        int obj_rule = i >= obj_from;
+        pos = obj_rule ? tokselect_protected_prefix(p, n) : 0;
+        for (; pos + TOKSEL_MINLEN <= n; pos++) {
             size_t maxl = n - pos, L;
             if (maxl > TOKSEL_MAXLEN) maxl = TOKSEL_MAXLEN;
             if (exclude_placeholders && is_placeholder(p[pos])) continue;
+            if (obj_rule && p[pos] == '.') continue;
             for (L = TOKSEL_MINLEN; L <= maxl; L++) {
                 if (exclude_placeholders && is_placeholder(p[pos + L - 1]))
                     break;
+                if (obj_rule && p[pos + L - 1] == '.') break;
                 candmap_get_or_add(a, &map, order, p + pos, L)->count++;
             }
         }
@@ -350,7 +397,7 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
                 break;
             }
             evals++;
-            net = eval_gain(strings, cache, chosen, c, dp);
+            net = eval_gain(strings, cache, chosen, c, dp, obj_from);
             if (net > 0) {
                 fresh_it[e.idx] = it;
                 fresh_gain[e.idx] = net;
@@ -380,7 +427,8 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
                 Str *s = vec_at_Str(strings, i);
                 if (bytes_contain(str_bytes(s), str_len(s),
                                   pick->ptr, pick->len))
-                    cache[i] = parse_one(str_bytes(s), str_len(s), &ix, dp);
+                    cache[i] = parse_one(str_bytes(s), str_len(s), &ix, dp,
+                                         i >= obj_from);
             }
         }
     }
@@ -397,7 +445,7 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
             for (j = (long)vec_len_Str(chosen) - 1; j >= 0; j--) {
                 Vec_Str *trial = vec_without(a, chosen, (size_t)j);
                 long tl = (long)str_len(vec_at_Str(chosen, (size_t)j));
-                long tot = tokselect_parse_total(a, strings, trial);
+                long tot = parse_total(a, strings, trial, obj_from);
                 if (tot - cur < tl) {
                     chosen = trial;
                     cur = tot;
@@ -574,9 +622,11 @@ int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
 
 Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                             TokenSet *ts, int classic_mode, int with_objects,
-                            long *savings)
+                            int classic_objects, long *savings)
 {
     Vec_Str *strings = corpus_strings(a, adv, with_objects);
+    size_t obj_from = objects_from(strings, adv, with_objects,
+                                   classic_objects);
     Vec_Str *final_tokens = vec_new_Str(a);
     long cur, original = 0, encoded = 0;
     size_t i;
@@ -588,14 +638,14 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
 
     /* Prune entries 1..n: drop when removal shrinks text+table.
        Sequential pass-1 savings are the wrong metric here. */
-    cur = tokselect_parse_total(a, strings, final_tokens);
+    cur = parse_total(a, strings, final_tokens, obj_from);
     for (sweep = 0; sweep < 2; sweep++) {
         int removed = 0;
         long j;
         for (j = (long)vec_len_Str(final_tokens) - 1; j >= 1; j--) {
             Str *tok = vec_at_Str(final_tokens, (size_t)j);
             Vec_Str *trial = vec_without(a, final_tokens, (size_t)j);
-            long tot = tokselect_parse_total(a, strings, trial);
+            long tot = parse_total(a, strings, trial, obj_from);
             if (tot - cur < (long)str_len(tok)) {
                 diag_verbose(d, "Optimal encoder: dropped token [%s].",
                              str_cstr(tok));
@@ -647,6 +697,9 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                 Message *m = vec_at_Message(tabs[t], k);
                 const unsigned char *s = str_bytes(m->Text);
                 size_t n = str_len(m->Text), pos;
+                int obj_rule = t == 4 && classic_objects;
+                long prot = obj_rule ? (long)tokselect_protected_prefix(s, n)
+                                     : 0;
                 Str *enc = str_new(a);
                 long ii;
 
@@ -656,12 +709,14 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                 for (ii = (long)n - 1; ii >= 0; ii--) {
                     long best = dp[ii + 1] + 1;
                     Str *pick = NULL;   /* ties keep the literal */
-                    const Vec_Str *bucket = ix.by_first[s[ii]];
+                    const Vec_Str *bucket = ii < prot ? NULL
+                                                      : ix.by_first[s[ii]];
                     size_t bj;
                     for (bj = 0; bucket != NULL &&
                                  bj < vec_len_Str(bucket); bj++) {
                         Str *tok = vec_at_Str(bucket, bj);
                         size_t tl = str_len(tok);
+                        if (obj_rule && token_has_dot(tok)) continue;
                         if (tl <= n - (size_t)ii &&
                             memcmp(s + ii, str_bytes(tok), tl) == 0) {
                             long v = dp[ii + (long)tl] + 1;

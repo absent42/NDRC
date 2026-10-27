@@ -152,10 +152,11 @@ static unsigned ddb_lookup_word(const unsigned char *ddb, int kind, int index)
 /* Decodes entry `index` of table `kind` via its lookup word, expanding
    tokens. Header: count at 6-kind, lookup pointer at 0x12-2*kind,
    tokens at 0x08; text bytes XOR 0xFF, 0x0A ends a text. */
-static int ddb_text(const unsigned char *ddb, long len, int kind, int index,
-                    char *out, size_t outsz)
+static int ddb_text_b(const unsigned char *ddb, long len, long base,
+                      int kind, int index, char *out, size_t outsz)
 {
-    long p = ddb_lookup_word(ddb, kind, index), t;
+    long p = (long)ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) - base
+                                 + 2L * index) - base, t;
     size_t o = 0;
     int entry;
 
@@ -171,7 +172,7 @@ static int ddb_text(const unsigned char *ddb, long len, int kind, int index,
             continue;
         }
         /* Token entry (b - 127); entry 0 is the first in the table. */
-        t = ddb_word(ddb, 0x08);
+        t = (long)ddb_word(ddb, 0x08) - base;
         for (entry = 0; entry < (int)b - 127; entry++) {
             while (t < len && !(ddb[t] & 0x80)) t++;
             t++;
@@ -183,6 +184,30 @@ static int ddb_text(const unsigned char *ddb, long len, int kind, int index,
     }
     out[o] = '\0';
     return 1;
+}
+
+static int ddb_text(const unsigned char *ddb, long len, int kind, int index,
+                    char *out, size_t outsz)
+{
+    return ddb_text_b(ddb, len, 0, kind, index, out, outsz);
+}
+
+/* Stored (un-XORed, unexpanded) bytes of an entry up to its 0x0A;
+   addresses are relative to base. Returns the count, -1 on overrun. */
+static long ddb_stored(const unsigned char *ddb, long len, long base,
+                       int kind, int index, unsigned char *out, size_t outsz)
+{
+    long p = (long)ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) - base
+                                 + 2L * index) - base;
+    size_t o = 0;
+
+    for (; p >= 0 && p < len; p++) {
+        unsigned b = ddb[p] ^ 0xFFu;
+        if (b == 0x0A) return (long)o;
+        if (o >= outsz) return -1;
+        out[o++] = (unsigned char)b;
+    }
+    return -1;
 }
 
 static int ddb_has_ref_byte(const unsigned char *ddb, long len, int kind,
@@ -456,6 +481,79 @@ TEST(container_warning_prints_source_text)
     CHECK(container_warning_ok(logp, want));
 }
 
+/* Classic targets: an object text's first word and the space run
+   after it stay literal, so the stored first space sits at the decoded
+   first space. NEXTDAAD keeps the unrestricted encoding. */
+TEST(classic_objects_keep_first_word_literal)
+{
+    char out0[512], logp[512], args[1600], txt[512];
+    unsigned char raw[512];
+    long n0 = 0, sn, k;
+    int i, refs_in_prefix = 0;
+
+    scratch_path(out0, sizeof out0, "co_zx.ddb");
+    scratch_path(logp, sizeof logp, "co_zx_log.txt");
+    snprintf(args, sizeof args, "ZX 48K EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(read_ddb(out0, ddb_auto, sizeof ddb_auto, &n0) != NULL);
+    if (n0 == 0) return;
+
+    CHECK(ddb_count(ddb_auto, 3) == 8);
+    for (i = 0; i < ddb_count(ddb_auto, 3); i++) {
+        const char *sp;
+        long dpos, spos = -1;
+        CHECK(ddb_text_b(ddb_auto, n0, 0x8400, 3, i, txt, sizeof txt));
+        sn = ddb_stored(ddb_auto, n0, 0x8400, 3, i, raw, sizeof raw);
+        CHECK(sn > 0);
+        if (sn <= 0) continue;
+        CHECK(raw[0] < 0x80);
+        sp = strchr(txt, ' ');
+        CHECK(sp != NULL);
+        if (sp == NULL) continue;
+        dpos = (long)(sp - txt);
+        for (k = 0; k < sn; k++)
+            if (raw[k] == ' ') { spos = k; break; }
+        CHECK_INT(spos, dpos);
+        for (k = 0; k <= dpos && k < sn; k++)
+            if (raw[k] >= 0x80) refs_in_prefix++;
+        for (k = dpos; k < sn && txt[k] == ' '; k++)
+            CHECK_INT(raw[k], ' ');
+    }
+    CHECK_INT(refs_in_prefix, 0);
+    /* The rule still leaves object 0's tail compressed. */
+    sn = ddb_stored(ddb_auto, n0, 0x8400, 3, 0, raw, sizeof raw);
+    for (k = 0, i = 0; k < sn; k++) if (raw[k] >= 0x80) i = 1;
+    CHECK_INT(i, 1);
+}
+
+TEST(nextdaad_objects_unrestricted)
+{
+    char out1[512], logp[512], args[1600], txt[512];
+    unsigned char raw[512];
+    long n1 = 0, sn, k;
+    int i, refs_in_prefix = 0;
+
+    scratch_path(out1, sizeof out1, "co_nd.ddb");
+    scratch_path(logp, sizeof logp, "co_nd_log.txt");
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(read_ddb(out1, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    if (n1 == 0) return;
+    /* Tokens may cover the first word or space on NEXTDAAD. */
+    for (i = 0; i < ddb_count(ddb_auto, 3); i++) {
+        const char *sp;
+        CHECK(ddb_text(ddb_auto, n1, 3, i, txt, sizeof txt));
+        sn = ddb_stored(ddb_auto, n1, 0, 3, i, raw, sizeof raw);
+        sp = strchr(txt, ' ');
+        if (sn <= 0 || sp == NULL) continue;
+        for (k = 0; k <= (long)(sp - txt) && k < sn; k++)
+            if (raw[k] >= 0x80) refs_in_prefix++;
+    }
+    CHECK(refs_in_prefix > 0);
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
@@ -467,5 +565,7 @@ int main(void)
     RUN(verbose_reports_objects_and_shares);
     RUN(tee_written_only_after_file_check);
     RUN(container_warning_prints_source_text);
+    RUN(classic_objects_keep_first_word_literal);
+    RUN(nextdaad_objects_unrestricted);
     return test_summary("autotok");
 }

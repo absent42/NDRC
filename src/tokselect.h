@@ -22,9 +22,18 @@
    is what makes an overlap-rich selected table win under it).
    Greedy selection with lazy re-evaluation, gains scored by optimal
    parse. Deterministic: same input, same table, every platform.
-   exclude_placeholders skips candidates containing '_' or '@'. */
+   exclude_placeholders skips candidates containing '_' or '@'.
+   classic_objects applies the classic article-strip rule to object
+   texts (see tokselect_protected_prefix): no candidate from the
+   protected prefix, none containing '.'. */
 TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
-                        int exclude_placeholders, int with_objects);
+                        int exclude_placeholders, int with_objects,
+                        int classic_objects);
+
+/* Leading bytes of an object text no token may cover under the classic
+   rule: n when s has no space, else the index past the run of spaces
+   after the first word. Exposed as a test seam. */
+size_t tokselect_protected_prefix(const unsigned char *s, size_t n);
 
 /* Deep-copies the compressable tables' Text strings, TOKSEL_TABLES
    tables in slot order, for the post-compression self-check. The
@@ -69,12 +78,14 @@ long tokselect_parse_total(Arena *a, const Vec_Str *strings,
    j+127 where j indexes the returned final_tokens (entry 0 included) -
    the byte contract tokselect_verify decodes. classic_mode pads the
    table to 128 entries with literal spaces, like the sequential path.
+   classic_objects: object texts keep the protected prefix literal and
+   use no token containing '.', in pruning and encoding alike.
    *savings = original minus encoded text bytes. Returns NULL after
    diag_fatal when more than 128 live tokens survive pruning (the
    reference space is 128..255); only reachable via a hand-written
    marked .tok - tokselect_run enforces the cap itself. */
 Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                             TokenSet *ts, int classic_mode, int with_objects,
-                            long *savings);
+                            int classic_objects, long *savings);
 
 #endif /* NDRC_TOKSELECT_H */
