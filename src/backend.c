@@ -496,7 +496,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
                        bypassed);
             }
             if (opts->verbose) printf("Auto-selecting compression tokens.\n");
-            compress_objects = 1;   /* tokselect_run always sets optimal_encode */
+            /* tokselect_run always sets optimal_encode; selecting without
+               objects keeps the frozen table equal to the reload's. */
+            compress_objects = !opts->no_object_tokens;
             ts = tokselect_run(a, d, adv,
                                strcmp(target->name, "NEXTDAAD") != 0,
                                compress_objects,
@@ -517,8 +519,14 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
             }
         }
     }
+    if (opts->no_object_tokens && !ts->optimal_encode) {
+        diag_fatal(d, "-no-object-tokens requires -auto-tokens");
+        return diag_exit_code(d);
+    }
+    if (opts->no_object_tokens) ts->objects_off = 1;
     /* Separate switches so each can be gated per target later. */
-    compress_objects = share_texts = ts->optimal_encode;
+    share_texts = ts->optimal_encode;
+    compress_objects = ts->optimal_encode && !ts->objects_off;
 
     /* PORT: drb.php:1919-1924. Dump XMessages if available, before the
        extern pad. The Maluva guard (drb.php:1922) is dead - see
@@ -571,7 +579,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        object texts go out compressed; kept below the XMB writes above,
        whose bytes must not change. */
     if (ts->optimal_encode) {
-        pre_texts = tokselect_snapshot(a, adv, compress_objects);
+        /* Objects always snapshotted: the emitted-DDB check decodes
+           them whether compressed or not. */
+        pre_texts = tokselect_snapshot(a, adv, 1);
         if (opts->verbose) printf("Optimal-parse text encoding.\n");
         /* Classic name printers scan stored object bytes; NEXTDAAD
            strips decoded text. */
@@ -621,8 +631,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        port. */
     object_weight_attr_offset = addr;
     emit_object_weight_attr(out, &addr, d, adv,
-                            ts->optimal_encode ? vec_at_MsgTable(pre_texts, 4)
-                                               : adv->objects);
+                            compress_objects ? vec_at_MsgTable(pre_texts, 4)
+                                             : adv->objects);
     layout_pad(out, &addr, target);
     objweight_size = addr - previous_address;
     previous_address = addr;

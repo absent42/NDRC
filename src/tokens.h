@@ -31,6 +31,9 @@ typedef struct {
                             tokselect_run, or by a .tok carrying
                             "encoder": "optimal" with compression
                             "advanced" - never otherwise. */
+    int objects_off;     /* 1 = object texts stay uncompressed: set by
+                            -no-object-tokens, or by a .tok carrying
+                            "objects": false with compression "advanced". */
 } TokenSet;
 
 /* Parses the builtin table for `language` (tokens_en.h/es.h/de.h/pt.h/

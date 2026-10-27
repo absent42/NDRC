@@ -26,6 +26,8 @@ typedef struct {
     long forced_base;           /* <0 = unset */
     int auto_tokens;            /* -auto-tokens: select per-game tokens */
     int tok_tee;                /* --tok seen (implies auto_tokens) */
+    int no_object_tokens;       /* -no-object-tokens: object texts stay
+                                   uncompressed under the optimal encoder */
     const char *tok_tee_path;   /* --tok=path; NULL = derive <input>.tok */
     const char *srcmap_path;    /* -srcmap=path; NULL = no source map */
     /* The caller's option-loop verdict. drb reports

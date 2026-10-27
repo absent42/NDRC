@@ -98,6 +98,11 @@ static int drb_match_option(Arena *a, BackendOptions *opts, const char *raw_arg)
         opts->auto_tokens = 1;
         return 1;
     }
+    /* Validated in backend_run, once the .tok lookup has run. */
+    if (strcmp(raw_arg, "-no-object-tokens") == 0) {
+        opts->no_object_tokens = 1;
+        return 1;
+    }
     if (strcmp(raw_arg, "--tok") == 0 ||
         strncmp(raw_arg, "--tok=", 6) == 0) {
         opts->tok_tee = 1;

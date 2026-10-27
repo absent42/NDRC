@@ -118,6 +118,7 @@ Case-insensitive (upper-cased before matching), dash-prefixed.
 | `-b=<addr>` | Override the target's default base address. Decimal, or hex with a `0x`/`0X` prefix. Must resolve to 1-0xFFFF. |
 | `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Encodes text with an optimal parse (smaller output than the sequential encoder); output DDBs remain format-identical and decode on every DAAD interpreter. Also compresses object texts and emits each duplicate text once (shared lookup entries); both stay format-identical. |
 | `--tok[=path]` | Write the selected token table as a standard `.tok` file (bare form: `<input>.tok`, where the normal override lookup finds it on the next run). Implies `-auto-tokens`. Like `--json=`, a `--tok=` argument is never claimed as the output name. |
+| `-no-object-tokens` | Keep object texts uncompressed under `-auto-tokens` or a marked `.tok`; duplicate sharing and the per-game table stay on, and the table is selected without object texts. For interpreters the object-text compression was not verified on. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Without `-auto-tokens` or a marked `.tok` it is an error (`-no-object-tokens requires -auto-tokens`, exit 2). |
 | `-srcmap=<path>` | Write a DSM v2 source map to `<path>`: one record per emitted condact, entry and process (DSF file, line, column, DDB offset), plus the `#define` symbols. Used by the NextDAAD CSpect debugger. Case-sensitive, NDRC extension. Join only: `--from-json` refuses it (`-srcmap needs a .DSF source input`, exit 2, nothing written), because source positions exist only when the front end ran in-process. The DDB is byte-identical with or without it. File paths in the map are relative to the map's own directory. An empty path is an option error. With `-np` no map is written. A map that cannot be created is an error. |
 
 An unrecognised option, in either set, stops compilation immediately
@@ -155,7 +156,9 @@ and the reload honours it, so the frozen build is byte-identical to the
 flagged one. A marked .tok compiles with object compression and
 duplicate sharing on reload; unmarked and hand-written .tok files
 compile exactly as DRC would. Stock DRC accepts a marked `.tok` and
-simply ignores the field.
+simply ignores the field. A tee written under `-no-object-tokens` also
+carries `"objects": false`, and the reload honours it: object texts stay
+uncompressed and the frozen build is byte-identical to the flagged one.
 
 On targets other than NEXTDAAD, selected tokens never contain `_` or
 `@` (object-name and print placeholders): on the original ZX Spectrum

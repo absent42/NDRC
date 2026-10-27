@@ -11,6 +11,10 @@
   0.3.0 build produced, and decodes identically. Unmarked and
   hand-written `.tok` files and the builtin table compile exactly as
   DRC would.
+- New `-no-object-tokens` option keeps object texts uncompressed under
+  `-auto-tokens` or a marked `.tok`, for interpreters the object-text
+  compression was not verified on; sharing stays on. A `--tok` tee
+  records it as `"objects": false`.
 - The compiler verifies the emitted DDB by decoding every text through
   its lookup table before writing it.
 - The DDB stays format-identical and decodes on every DAAD

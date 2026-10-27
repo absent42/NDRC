@@ -555,6 +555,131 @@ TEST(nextdaad_objects_unrestricted)
     CHECK(refs_in_prefix > 0);
 }
 
+/* N from "Text compression savings: N bytes.", -1 if absent. */
+static long log_savings(const char *logpath)
+{
+    FILE *f = fopen(logpath, "rb");
+    char line[1024];
+    long n = -1;
+    const char *key = "Text compression savings: ";
+
+    if (f == NULL) return -1;
+    while (fgets(line, sizeof line, f) != NULL) {
+        const char *p = strstr(line, key);
+        if (p != NULL) { n = strtol(p + strlen(key), NULL, 10); break; }
+    }
+    fclose(f);
+    return n;
+}
+
+TEST(no_object_tokens_keeps_objects_plain)
+{
+    char out0[512], out1[512], out2[512], logp[512], args[1600];
+    char t0[512], t1[512];
+    long n0 = 0, n1 = 0, s_on, s_off;
+    int kind, i;
+
+    scratch_path(out0, sizeof out0, "no_ctl.ddb");
+    scratch_path(out1, sizeof out1, "no_on.ddb");
+    scratch_path(out2, sizeof out2, "no_off.ddb");
+    scratch_path(logp, sizeof logp, "no_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\"", OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    s_on = log_savings(logp);
+    snprintf(args, sizeof args,
+             "NEXTDAAD EN %s \"%s\" -no-object-tokens -auto-tokens -v",
+             OBJSHARE, out2);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    s_off = log_savings(logp);
+    CHECK(!log_contains(logp, "Object texts compressed."));
+    CHECK(log_contains(logp, "Shared 1 duplicate texts in objects ("));
+    CHECK(s_off > 0);
+    CHECK(s_off < s_on);
+
+    CHECK(read_ddb(out0, ddb_ctl, sizeof ddb_ctl, &n0) != NULL);
+    CHECK(read_ddb(out2, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    if (n0 == 0 || n1 == 0) return;
+    for (i = 0; i < ddb_count(ddb_auto, 3); i++)
+        CHECK(!ddb_has_ref_byte(ddb_auto, n1, 3, i));
+    /* Duplicates still shared, other tables still compressed. */
+    CHECK_INT(ddb_lookup_word(ddb_auto, 3, 0), ddb_lookup_word(ddb_auto, 3, 3));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 1, 7), ddb_lookup_word(ddb_auto, 1, 8));
+    for (kind = 0; kind < 4; kind++) {
+        CHECK_INT(ddb_count(ddb_auto, kind), ddb_count(ddb_ctl, kind));
+        for (i = 0; i < ddb_count(ddb_ctl, kind); i++) {
+            t0[0] = t1[0] = '\0';
+            CHECK(ddb_text(ddb_ctl, n0, kind, i, t0, sizeof t0));
+            CHECK(ddb_text(ddb_auto, n1, kind, i, t1, sizeof t1));
+            CHECK_STR(t1, t0);
+        }
+    }
+}
+
+TEST(no_object_tokens_tee_reloads_identically)
+{
+    char dsf[512], tok[512], json[512], out1[512], out2[512], out3[512];
+    char logp[512], args[1600];
+
+    scratch_path(dsf, sizeof dsf, "no_rt.DSF");
+    scratch_path(tok, sizeof tok, "no_rt.tok");
+    scratch_path(json, sizeof json, "no_rt.json");
+    scratch_path(out1, sizeof out1, "no_rt1.ddb");
+    scratch_path(out2, sizeof out2, "no_rt2.ddb");
+    scratch_path(out3, sizeof out3, "no_rt3.ddb");
+    scratch_path(logp, sizeof logp, "no_rt_log.txt");
+    remove(tok);
+    CHECK(copy_file(OBJSHARE, dsf));
+
+    snprintf(args, sizeof args,
+             "NEXTDAAD EN \"%s\" \"%s\" --tok -no-object-tokens \"--json=%s\"",
+             dsf, out1, json);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(tok, "\"encoder\": \"optimal\", \"objects\": false"));
+
+    /* Flagless reload of the tee. */
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out2);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(files_equal(out1, out2));
+    remove(tok);
+
+    /* --from-json accepts the option too. */
+    snprintf(args, sizeof args,
+             "--from-json NEXTDAAD EN \"%s\" \"%s\" -auto-tokens -no-object-tokens",
+             json, out3);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(files_equal(out1, out3));
+}
+
+TEST(no_object_tokens_requires_auto_tokens)
+{
+    char dsf[512], tok[512], out1[512], logp[512], args[1600];
+
+    scratch_path(dsf, sizeof dsf, "no_rq.DSF");
+    scratch_path(tok, sizeof tok, "no_rq.tok");
+    scratch_path(out1, sizeof out1, "no_rq.ddb");
+    scratch_path(logp, sizeof logp, "no_rq_log.txt");
+    remove(tok);
+    CHECK(copy_file(OBJSHARE, dsf));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -no-object-tokens",
+             dsf, out1);
+    CHECK_INT(run_ndrc(args, logp), 2);
+    CHECK(log_contains(logp, "-no-object-tokens requires -auto-tokens"));
+
+    /* An unmarked .tok does not qualify; a marked one does. */
+    write_text(tok, "{\"compression\": \"advanced\", "
+                    "\"tokens\": [\"00\",\"7468\"]}");
+    CHECK_INT(run_ndrc(args, logp), 2);
+    write_text(tok, "{\"compression\": \"advanced\", "
+                    "\"encoder\": \"optimal\", \"tokens\": [\"00\",\"7468\"]}");
+    CHECK_INT(run_ndrc(args, logp), 0);
+    remove(tok);
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
@@ -568,5 +693,8 @@ int main(void)
     RUN(container_warning_prints_source_text);
     RUN(classic_objects_keep_first_word_literal);
     RUN(nextdaad_objects_unrestricted);
+    RUN(no_object_tokens_keeps_objects_plain);
+    RUN(no_object_tokens_tee_reloads_identically);
+    RUN(no_object_tokens_requires_auto_tokens);
     return test_summary("autotok");
 }

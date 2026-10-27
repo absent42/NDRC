@@ -360,6 +360,65 @@ TEST(loader_marker_gate)
     arena_free(a);
 }
 
+TEST(loader_objects_off_gate)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    TokenSet *ts;
+
+    ts = load_tok_text(a, d, "{\"compression\":\"advanced\","
+        "\"encoder\":\"optimal\",\"objects\":false,\"tokens\":[\"00\"]}");
+    CHECK(ts != NULL && ts->objects_off == 1);
+
+    ts = load_tok_text(a, d, "{\"compression\":\"advanced\","
+        "\"encoder\":\"optimal\",\"objects\":true,\"tokens\":[\"00\"]}");
+    CHECK(ts != NULL && ts->objects_off == 0);
+
+    ts = load_tok_text(a, d, "{\"compression\":\"advanced\","
+        "\"encoder\":\"optimal\",\"tokens\":[\"00\"]}");
+    CHECK(ts != NULL && ts->objects_off == 0);
+
+    /* Not a JSON false literal: ignored. */
+    ts = load_tok_text(a, d, "{\"compression\":\"advanced\","
+        "\"objects\":\"false\",\"tokens\":[\"00\"]}");
+    CHECK(ts != NULL && ts->objects_off == 0);
+
+    /* Non-advanced compression ignores the field. */
+    ts = load_tok_text(a, d, "{\"compression\":\"basic\","
+        "\"objects\":false,\"tokens\":[\"00\"]}");
+    CHECK(ts != NULL && ts->objects_off == 0);
+    arena_free(a);
+}
+
+TEST(write_tok_objects_off_roundtrip)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts, *loaded;
+    char tok[512], fake_input[512];
+    int pass;
+
+    add_msg(a, adv->messages, "WATERWATERWATERWATER EVERYWHEREEVERYWHERE");
+    ts = tokselect_run(a, d, adv, 0, 0, 0);
+    CHECK_INT(ts->objects_off, 0);
+    scratch_path(tok, sizeof tok, "ndrc_tsel_oo.tok");
+    scratch_path(fake_input, sizeof fake_input, "ndrc_tsel_oo.json");
+    for (pass = 0; pass < 2; pass++) {
+        ts->objects_off = pass;
+        remove(tok);
+        CHECK_INT(tokens_write_tok(tok, ts), 1);
+        loaded = tokens_load_override(a, d, fake_input, NULL);
+        CHECK(loaded != NULL);
+        if (loaded != NULL) {
+            CHECK_INT(loaded->optimal_encode, 1);
+            CHECK_INT(loaded->objects_off, pass);
+        }
+    }
+    remove(tok);
+    arena_free(a);
+}
+
 TEST(selector_result_is_marked)
 {
     Arena *a = arena_new(0);
@@ -1067,6 +1126,8 @@ int main(void)
     RUN(snapshot_verify_roundtrip_and_tamper);
     RUN(verify_catches_wrong_table);
     RUN(loader_marker_gate);
+    RUN(loader_objects_off_gate);
+    RUN(write_tok_objects_off_roundtrip);
     RUN(selector_result_is_marked);
     RUN(write_tok_roundtrip);
     RUN(compress_optimal_beats_sequential_shape);
