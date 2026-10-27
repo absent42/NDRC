@@ -30,6 +30,21 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
                         int exclude_placeholders, int with_objects,
                         int classic_objects);
 
+/* The compressable tables' Text strings in slot order (locations,
+   messages, sysmess, xmessages, then objects when with_objects). */
+Vec_Str *tokselect_corpus_strings(Arena *a, const Adventure *adv,
+                                  int with_objects);
+
+/* tokselect_run's greedy under integer costs: literal byte b costs
+   lit_cost[b], any reference ref_cost, a token tab_cost_per_byte per
+   byte; up to maxtok tokens of 2..maxlen bytes; no placeholder rule.
+   strings[obj_from..] get the classic object rule (pass the length for
+   none). Returns raw tokens, longest-first. Deterministic. */
+Vec_Str *tokselect_select_costed(Arena *a, Diag *d, const Vec_Str *strings,
+                                 size_t obj_from, unsigned maxtok,
+                                 const int lit_cost[256], int ref_cost,
+                                 int tab_cost_per_byte, int maxlen);
+
 /* Leading bytes of an object text no token may cover under the classic
    rule: n when s has no space, else the index past the run of spaces
    after the first word. Exposed as a test seam. */
