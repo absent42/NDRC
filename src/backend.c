@@ -110,6 +110,17 @@ static void print_map_line(int verbose, const char *label, long value)
     printf("%s[%s]\n", label, buf);
 }
 
+/* Not in DRC: reports one table's emit_messages sharing and folds the
+   bytes it saved into the savings total. */
+static void report_share(int verbose, const ShareStats *s, const char *table,
+                         long *savings)
+{
+    if (verbose && s->texts > 0)
+        printf("Shared %lu duplicate texts in %s (%ld bytes).\n",
+               (unsigned long)s->texts, table, s->bytes);
+    *savings += s->bytes;
+}
+
 /* PORT: drb.php:804-812 checkMaluva / drb.php:814-817 MaluvaEmbedded,
    restated here for the drb.php:1922 call site (emit_proc.c keeps its
    own copies for its per-condact guards; not shared - both are file-
@@ -194,6 +205,10 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     Adventure *adv;
     TokenSet *ts;
     Vec_MsgTable *pre_texts = NULL;
+    Vec_Str *final_tokens = NULL;
+    int compress_objects, share_texts;
+    ShareStats otx_share = { 0, 0 }, stx_share = { 0, 0 };
+    ShareStats mtx_share = { 0, 0 }, ltx_share = { 0, 0 };
     long addr;
     Str *out;
     long previous_address;
@@ -481,8 +496,10 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
                        bypassed);
             }
             if (opts->verbose) printf("Auto-selecting compression tokens.\n");
+            compress_objects = 1;   /* tokselect_run always sets optimal_encode */
             ts = tokselect_run(a, d, adv,
-                               strcmp(target->name, "NEXTDAAD") != 0, 1);
+                               strcmp(target->name, "NEXTDAAD") != 0,
+                               compress_objects);
         } else {
             override = tokens_load_override(a, d, opts->input_name, &resolved_path);
             if (override != NULL) {
@@ -499,6 +516,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
             }
         }
     }
+    /* Separate switches so each can be gated per target later. */
+    compress_objects = share_texts = ts->optimal_encode;
 
     /* PORT: drb.php:1919-1924. Dump XMessages if available, before the
        extern pad. The Maluva guard (drb.php:1922) is dead - see
@@ -547,13 +566,33 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     extern_size = addr - previous_address;
     previous_address = addr;
 
+    /* Not in DRC: the optimal encoder compresses before OTX is written so
+       object texts go out compressed; kept below the XMB writes above,
+       whose bytes must not change. */
+    if (ts->optimal_encode) {
+        pre_texts = tokselect_snapshot(a, adv, compress_objects);
+        if (opts->verbose) printf("Optimal-parse text encoding.\n");
+        final_tokens = tokselect_compress(a, d, adv, ts, classic,
+                                          compress_objects, &text_savings);
+        if (final_tokens == NULL) return diag_exit_code(d);
+        if (!tokselect_verify(pre_texts, adv, final_tokens, compress_objects)) {
+            diag_fatal(d, "auto-tokens self-check failed: compressed "
+                          "text does not decode back to source");
+            return diag_exit_code(d);
+        }
+        if (opts->verbose && compress_objects)
+            printf("Object texts compressed.\n");
+    }
+
     /* PORT: drb.php:1940-1945 generateOTX, backed by emit_messages -
        see emit.h. drb.php:1941 hard-codes dumpToXMB=false for OTX
        regardless of adv->dumpToXMB - object texts must be dumped to RAM
        so the -x flag can find them (see the PHP comment there). xmb_fh/
        &xmb_addr are threaded through regardless (unused down that
        branch when the dump flag passed here is 0). */
-    emit_messages(out, &addr, target, adv->objects, 0, 0, xmb_fh, &xmb_addr, 0, NULL);
+    emit_messages(out, &addr, target, adv->objects, 0, 0, xmb_fh, &xmb_addr,
+                  share_texts, &otx_share);
+    report_share(opts->verbose, &otx_share, "objects", &text_savings);
     /* PORT: drb.php:1942 - the object_data-not-objects quirk (S12/
        S6.6): the lookup table is 2 bytes per OBJECT_DATA entry, not
        per OTX (objects) entry, even though it is OTX's own address
@@ -618,34 +657,21 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        transcript's order exactly. */
     compressed_text_offset = ts->has_tokens ? addr : 0;
     print_map_line(opts->verbose, "Tokens            ", compressed_text_offset);
-    if (ts->optimal_encode) pre_texts = tokselect_snapshot(a, adv, 1);
-    {
-        Vec_Str *final_tokens;
-        if (ts->optimal_encode && opts->verbose)
-            printf("Optimal-parse text encoding.\n");
-        final_tokens = ts->optimal_encode
-            ? tokselect_compress(a, d, adv, ts, classic, 1, &text_savings)
-            : tokens_compress(a, d, adv, ts, classic, &text_savings);
+    if (!ts->optimal_encode) {
+        final_tokens = tokens_compress(a, d, adv, ts, classic, &text_savings);
         if (final_tokens == NULL) return diag_exit_code(d);
-        if (ts->optimal_encode) {
-            if (!tokselect_verify(pre_texts, adv, final_tokens, 1)) {
-                diag_fatal(d, "auto-tokens self-check failed: compressed "
-                              "text does not decode back to source");
-                return diag_exit_code(d);
-            }
-            if (opts->tok_tee) {
-                const char *tee = opts->tok_tee_path != NULL
-                                  ? opts->tok_tee_path
-                                  : replace_extension(a, opts->input_name, "tok");
-                if (!tokens_write_tok(tee, ts)) {
-                    diag_fatal(d, "Can't create tokens file %s", tee);
-                    return diag_exit_code(d);
-                }
-                if (opts->verbose) printf("Tokens written to %s.\n", tee);
-            }
-        }
-        tokens_emit(out, final_tokens, &addr);
     }
+    if (ts->optimal_encode && opts->tok_tee) {
+        const char *tee = opts->tok_tee_path != NULL
+                          ? opts->tok_tee_path
+                          : replace_extension(a, opts->input_name, "tok");
+        if (!tokens_write_tok(tee, ts)) {
+            diag_fatal(d, "Can't create tokens file %s", tee);
+            return diag_exit_code(d);
+        }
+        if (opts->verbose) printf("Tokens written to %s.\n", tee);
+    }
+    tokens_emit(out, final_tokens, &addr);
     layout_pad(out, &addr, target);
     token_size = addr - previous_address;
     previous_address = addr;
@@ -654,7 +680,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        is_stx=1 marks the sysmess call (drb.php:532's LAST_DEFAULT_
        SYSMESS special case); dump_to_xmb is this task's own local flag,
        matching drb.php:1999's $adventure->dumpToXMB read. */
-    emit_messages(out, &addr, target, adv->sysmess, opts->dump_to_xmb, 1, xmb_fh, &xmb_addr, 0, NULL);
+    emit_messages(out, &addr, target, adv->sysmess, opts->dump_to_xmb, 1, xmb_fh, &xmb_addr,
+                  share_texts, &stx_share);
+    report_share(opts->verbose, &stx_share, "sysmess", &text_savings);
     sysmess_lookup_offset = addr - 2 * (long)vec_len_Message(adv->sysmess);
     print_map_line(opts->verbose, "Sysmess           ", sysmess_lookup_offset);
     layout_pad(out, &addr, target);
@@ -662,7 +690,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     previous_address = addr;
 
     /* PORT: drb.php:2006-2012 generateMTX. */
-    emit_messages(out, &addr, target, adv->messages, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, 0, NULL);
+    emit_messages(out, &addr, target, adv->messages, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
+                  share_texts, &mtx_share);
+    report_share(opts->verbose, &mtx_share, "messages", &text_savings);
     message_lookup_offset = addr - 2 * (long)vec_len_Message(adv->messages);
     print_map_line(opts->verbose, "Messages          ", message_lookup_offset);
     layout_pad(out, &addr, target);
@@ -670,7 +700,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     previous_address = addr;
 
     /* PORT: drb.php:2015-2021 generateLTX. */
-    emit_messages(out, &addr, target, adv->locations, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, 0, NULL);
+    emit_messages(out, &addr, target, adv->locations, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
+                  share_texts, &ltx_share);
+    report_share(opts->verbose, &ltx_share, "locations", &text_savings);
     location_lookup_offset = addr - 2 * (long)vec_len_Message(adv->locations);
     print_map_line(opts->verbose, "Locations         ", location_lookup_offset);
     layout_pad(out, &addr, target);
