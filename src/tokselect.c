@@ -24,20 +24,39 @@ static void tokindex_build(Arena *a, TokIndex *ix, const Vec_Str *tokens)
     }
 }
 
-/* dp[i] = cheapest encoding of s[i..n); dp sized n+1 by the caller. */
-static long parse_one(const unsigned char *s, size_t n,
-                      const TokIndex *ix, long *dp)
+size_t tokselect_protected_prefix(const unsigned char *s, size_t n)
 {
+    const unsigned char *sp = n > 0 ? memchr(s, ' ', n) : NULL;
     size_t i;
+
+    if (sp == NULL) return n;
+    for (i = (size_t)(sp - s); i < n && s[i] == ' '; i++) ;
+    return i;
+}
+
+/* Classic interpreters scan stored object bytes for the first space
+   and reject a stored '.', so tokens must not hide either. */
+static int token_has_dot(const Str *t)
+{
+    return memchr(str_bytes(t), '.', str_len(t)) != NULL;
+}
+
+/* dp[i] = cheapest encoding of s[i..n); dp sized n+1 by the caller.
+   obj_rule: classic object text - literal prefix, no '.' tokens. */
+static long parse_one(const unsigned char *s, size_t n,
+                      const TokIndex *ix, long *dp, int obj_rule)
+{
+    size_t i, prot = obj_rule ? tokselect_protected_prefix(s, n) : 0;
 
     dp[n] = 0;
     for (i = n; i-- > 0; ) {
         long best = dp[i + 1] + 1;
-        const Vec_Str *bucket = ix->by_first[s[i]];
+        const Vec_Str *bucket = i < prot ? NULL : ix->by_first[s[i]];
         size_t j;
         for (j = 0; bucket != NULL && j < vec_len_Str(bucket); j++) {
             Str *t = vec_at_Str(bucket, j);
             size_t tl = str_len(t);
+            if (obj_rule && token_has_dot(t)) continue;
             if (tl <= n - i && memcmp(s + i, str_bytes(t), tl) == 0) {
                 long v = dp[i + tl] + 1;
                 if (v < best) best = v;
@@ -59,8 +78,10 @@ static long *dp_scratch(Arena *a, const Vec_Str *strings)
     return arena_alloc(a, (maxlen + 1) * sizeof(long));
 }
 
-long tokselect_parse_total(Arena *a, const Vec_Str *strings,
-                           const Vec_Str *tokens)
+/* strings[obj_from..] are classic object texts (obj_from = length
+   when the rule is off). */
+static long parse_total(Arena *a, const Vec_Str *strings,
+                        const Vec_Str *tokens, size_t obj_from)
 {
     TokIndex ix;
     long *dp = dp_scratch(a, strings);
@@ -70,9 +91,15 @@ long tokselect_parse_total(Arena *a, const Vec_Str *strings,
     tokindex_build(a, &ix, tokens);
     for (i = 0; i < vec_len_Str(strings); i++) {
         Str *s = vec_at_Str(strings, i);
-        total += parse_one(str_bytes(s), str_len(s), &ix, dp);
+        total += parse_one(str_bytes(s), str_len(s), &ix, dp, i >= obj_from);
     }
     return total;
+}
+
+long tokselect_parse_total(Arena *a, const Vec_Str *strings,
+                           const Vec_Str *tokens)
+{
+    return parse_total(a, strings, tokens, vec_len_Str(strings));
 }
 
 #define TOKSEL_MINLEN 2
@@ -198,28 +225,42 @@ static HeapEnt heap_pop(Heap *h)
     return top;
 }
 
-/* The compressable tables, in the fixed "advanced" order. Mirrors
-   tokens.c's get_compressable_tables for that mode. */
-static void compressable_tables(const Adventure *adv,
-                                const Vec_Message *out[4])
+/* The compressable tables: slots 0-3 mirror tokens.c's
+   get_compressable_tables "advanced" order; slot 4 is objects when
+   with_objects, else NULL (callers skip NULL slots). */
+static void compressable_tables(const Adventure *adv, int with_objects,
+                                const Vec_Message *out[TOKSEL_TABLES])
 {
     out[0] = adv->locations;
     out[1] = adv->messages;
     out[2] = adv->sysmess;
     out[3] = adv->xmessages;
+    out[4] = with_objects ? adv->objects : NULL;
 }
 
-static Vec_Str *corpus_strings(Arena *a, const Adventure *adv)
+static Vec_Str *corpus_strings(Arena *a, const Adventure *adv,
+                               int with_objects)
 {
-    const Vec_Message *tabs[4];
+    const Vec_Message *tabs[TOKSEL_TABLES];
     Vec_Str *out = vec_new_Str(a);
     size_t t, k;
 
-    compressable_tables(adv, tabs);
-    for (t = 0; t < 4; t++)
-        for (k = 0; k < vec_len_Message(tabs[t]); k++)
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; t < TOKSEL_TABLES; t++)
+        for (k = 0; tabs[t] != NULL && k < vec_len_Message(tabs[t]); k++)
             vec_push_Str(out, vec_at_Message(tabs[t], k)->Text);
     return out;
+}
+
+/* Index of the first classic object text in corpus_strings' output:
+   objects are the last slot, so they are its tail. */
+static size_t objects_from(const Vec_Str *strings, const Adventure *adv,
+                           int with_objects, int classic_objects)
+{
+    size_t n = vec_len_Str(strings);
+
+    if (!with_objects || !classic_objects || adv->objects == NULL) return n;
+    return n - vec_len_Message(adv->objects);
 }
 
 static int is_placeholder(unsigned char b)
@@ -245,7 +286,8 @@ static int bytes_contain(const unsigned char *h, size_t hn,
    peak memory stays flat. Only pointers into the caller's arena are
    read; nothing from scratch escapes. */
 static long eval_gain(const Vec_Str *strings, const long *cache,
-                      const Vec_Str *chosen, const Cand *c, long *dp)
+                      const Vec_Str *chosen, const Cand *c, long *dp,
+                      size_t obj_from)
 {
     Arena *scratch = arena_new(0);
     Vec_Str *trial = vec_new_Str(scratch);
@@ -263,7 +305,8 @@ static long eval_gain(const Vec_Str *strings, const long *cache,
         Str *s = vec_at_Str(strings, i);
         if (!bytes_contain(str_bytes(s), str_len(s), c->ptr, c->len))
             continue;
-        gain += cache[i] - parse_one(str_bytes(s), str_len(s), &ix, dp);
+        gain += cache[i] - parse_one(str_bytes(s), str_len(s), &ix, dp,
+                                     i >= obj_from);
     }
     arena_free(scratch);
     return gain - (long)c->len;
@@ -280,9 +323,12 @@ static Vec_Str *vec_without(Arena *a, const Vec_Str *v, size_t skip)
 }
 
 TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
-                        int exclude_placeholders)
+                        int exclude_placeholders, int with_objects,
+                        int classic_objects)
 {
-    Vec_Str *strings = corpus_strings(a, adv);
+    Vec_Str *strings = corpus_strings(a, adv, with_objects);
+    size_t obj_from = objects_from(strings, adv, with_objects,
+                                   classic_objects);
     Vec_Cand *order = vec_new_Cand(a);
     CandMap map;
     Heap heap = {0};
@@ -302,13 +348,17 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
         Str *s = vec_at_Str(strings, i);
         const unsigned char *p = str_bytes(s);
         size_t n = str_len(s), pos;
-        for (pos = 0; pos + TOKSEL_MINLEN <= n; pos++) {
+        int obj_rule = i >= obj_from;
+        pos = obj_rule ? tokselect_protected_prefix(p, n) : 0;
+        for (; pos + TOKSEL_MINLEN <= n; pos++) {
             size_t maxl = n - pos, L;
             if (maxl > TOKSEL_MAXLEN) maxl = TOKSEL_MAXLEN;
             if (exclude_placeholders && is_placeholder(p[pos])) continue;
+            if (obj_rule && p[pos] == '.') continue;
             for (L = TOKSEL_MINLEN; L <= maxl; L++) {
                 if (exclude_placeholders && is_placeholder(p[pos + L - 1]))
                     break;
+                if (obj_rule && p[pos + L - 1] == '.') break;
                 candmap_get_or_add(a, &map, order, p + pos, L)->count++;
             }
         }
@@ -347,7 +397,7 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
                 break;
             }
             evals++;
-            net = eval_gain(strings, cache, chosen, c, dp);
+            net = eval_gain(strings, cache, chosen, c, dp, obj_from);
             if (net > 0) {
                 fresh_it[e.idx] = it;
                 fresh_gain[e.idx] = net;
@@ -377,7 +427,8 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
                 Str *s = vec_at_Str(strings, i);
                 if (bytes_contain(str_bytes(s), str_len(s),
                                   pick->ptr, pick->len))
-                    cache[i] = parse_one(str_bytes(s), str_len(s), &ix, dp);
+                    cache[i] = parse_one(str_bytes(s), str_len(s), &ix, dp,
+                                         i >= obj_from);
             }
         }
     }
@@ -394,7 +445,7 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
             for (j = (long)vec_len_Str(chosen) - 1; j >= 0; j--) {
                 Vec_Str *trial = vec_without(a, chosen, (size_t)j);
                 long tl = (long)str_len(vec_at_Str(chosen, (size_t)j));
-                long tot = tokselect_parse_total(a, strings, trial);
+                long tot = parse_total(a, strings, trial, obj_from);
                 if (tot - cur < tl) {
                     chosen = trial;
                     cur = tot;
@@ -438,16 +489,17 @@ TokenSet *tokselect_run(Arena *a, Diag *d, const Adventure *adv,
     return ts;
 }
 
-Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv)
+Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv,
+                                 int with_objects)
 {
-    const Vec_Message *tabs[4];
+    const Vec_Message *tabs[TOKSEL_TABLES];
     Vec_MsgTable *out = vec_new_MsgTable(a);
     size_t t, k;
 
-    compressable_tables(adv, tabs);
-    for (t = 0; t < 4; t++) {
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; t < TOKSEL_TABLES; t++) {
         Vec_Message *copy = vec_new_Message(a);
-        for (k = 0; k < vec_len_Message(tabs[t]); k++) {
+        for (k = 0; tabs[t] != NULL && k < vec_len_Message(tabs[t]); k++) {
             Message *src = vec_at_Message(tabs[t], k);
             Message *m = arena_calloc(a, sizeof(*m));
             m->Text = str_new(a);
@@ -460,17 +512,18 @@ Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv)
 }
 
 int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
-                     const Vec_Str *final_tokens)
+                     const Vec_Str *final_tokens, int with_objects)
 {
-    const Vec_Message *tabs[4];
+    const Vec_Message *tabs[TOKSEL_TABLES];
     Arena *scratch = arena_new(0);
     size_t t, k, i;
     int ok = 1;
 
-    compressable_tables(adv, tabs);
-    for (t = 0; ok && t < 4; t++) {
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; ok && t < TOKSEL_TABLES; t++) {
         const Vec_Message *now = tabs[t];
         Vec_Message *was = vec_at_MsgTable(before, t);
+        if (now == NULL) continue;
         if (vec_len_Message(now) != vec_len_Message(was)) { ok = 0; break; }
         for (k = 0; ok && k < vec_len_Message(now); k++) {
             Str *enc = vec_at_Message(now, k)->Text;
@@ -500,10 +553,161 @@ int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
     return ok;
 }
 
-Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
-                            TokenSet *ts, int classic_mode, long *savings)
+/* Appends the text at buffer offset `at` to dec. Reference byte b
+   skips b-127 bit-7-terminated entries from tok_at, as the interpreter
+   does. 0 on any read past len. */
+static int decode_at(Str *dec, const unsigned char *ddb, size_t len,
+                     size_t at, size_t tok_at)
 {
-    Vec_Str *strings = corpus_strings(a, adv);
+    for (;;) {
+        unsigned b;
+        size_t p = tok_at, skip;
+        if (at >= len) return 0;
+        b = ddb[at++] ^ 0xFFu;
+        if (b == 0x0A) return 1;
+        if (b < 128) { str_push(dec, (char)b); continue; }
+        for (skip = b - 127; skip > 0; p++) {
+            if (p >= len) return 0;
+            if (ddb[p] & 0x80) skip--;
+        }
+        do {
+            if (p >= len) return 0;
+            str_push(dec, (char)(ddb[p] & 0x7F));
+        } while (!(ddb[p++] & 0x80));
+    }
+}
+
+int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
+                         size_t ddb_len, long base_addr, long tokens_addr,
+                         int big_endian, const DdbTableRef refs[4],
+                         int *bad_ref, size_t *bad_index, size_t *skipped)
+{
+    Arena *scratch = arena_new(0);
+    long tok_off = tokens_addr - base_addr;
+    size_t tok_at = tok_off < 0 ? ddb_len : (size_t)tok_off;
+    size_t k;
+    int r, ok = 1;
+
+    *skipped = 0;
+    for (r = 0; r < 4; r++) *skipped += refs[r].count - refs[r].checked;
+    for (r = 0; ok && r < 4; r++) {
+        const DdbTableRef *t = &refs[r];
+        const Vec_Message *was = vec_at_MsgTable(before, (size_t)t->snap_index);
+        size_t n = vec_len_Message(was);
+        long lk = t->lookup_addr - base_addr;
+        if (t->count != n || t->checked > n) {   /* length differs from source */
+            *bad_ref = r;
+            *bad_index = t->count < n ? t->count : n;
+            ok = 0;
+            break;
+        }
+        for (k = 0; k < t->checked; k++) {
+            size_t w = (size_t)lk + 2 * k;
+            Str *ref = vec_at_Message(was, k)->Text, *dec = str_new(scratch);
+            long at;
+            if (lk < 0 || w + 1 >= ddb_len) { ok = 0; break; }
+            at = big_endian ? (ddb[w] << 8 | ddb[w + 1])
+                            : (ddb[w] | ddb[w + 1] << 8);
+            at -= base_addr;
+            ok = at >= 0 && decode_at(dec, ddb, ddb_len, (size_t)at, tok_at)
+                 && str_len(dec) == str_len(ref)
+                 && memcmp(str_bytes(dec), str_bytes(ref), str_len(ref)) == 0;
+            if (!ok) break;
+        }
+        if (!ok) { *bad_ref = r; *bad_index = k; }
+    }
+    arena_free(scratch);
+    return ok;
+}
+
+/* DP-encodes every compressable text through tokens. counts != NULL:
+   count references per entry only, texts untouched; else rewrite them. */
+static void encode_texts(Arena *a, const Adventure *adv,
+                         const Vec_Str *tokens, int with_objects,
+                         int classic_objects, long *counts,
+                         long *original, long *encoded)
+{
+    TokIndex ix;
+    long *dp;
+    Str **choice;
+    const Vec_Message *tabs[TOKSEL_TABLES];
+    size_t maxlen = 0, t, k;
+
+    tokindex_build(a, &ix, tokens);
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; t < TOKSEL_TABLES; t++) {
+        if (tabs[t] == NULL) continue;
+        for (k = 0; k < vec_len_Message(tabs[t]); k++)
+            if (str_len(vec_at_Message(tabs[t], k)->Text) > maxlen)
+                maxlen = str_len(vec_at_Message(tabs[t], k)->Text);
+    }
+    dp = arena_alloc(a, (maxlen + 1) * sizeof(*dp));
+    choice = arena_alloc(a, (maxlen + 1) * sizeof(*choice));
+
+    for (t = 0; t < TOKSEL_TABLES; t++) {
+        if (tabs[t] == NULL) continue;
+        for (k = 0; k < vec_len_Message(tabs[t]); k++) {
+            Message *m = vec_at_Message(tabs[t], k);
+            const unsigned char *s = str_bytes(m->Text);
+            size_t n = str_len(m->Text), pos;
+            int obj_rule = t == 4 && classic_objects;
+            long prot = obj_rule ? (long)tokselect_protected_prefix(s, n)
+                                 : 0;
+            Str *enc = counts != NULL ? NULL : str_new(a);
+            long ii;
+
+            if (counts == NULL) *original += (long)n;
+            dp[n] = 0;
+            choice[n] = NULL;
+            for (ii = (long)n - 1; ii >= 0; ii--) {
+                long best = dp[ii + 1] + 1;
+                Str *pick = NULL;   /* ties keep the literal */
+                const Vec_Str *bucket = ii < prot ? NULL
+                                                  : ix.by_first[s[ii]];
+                size_t bj;
+                for (bj = 0; bucket != NULL &&
+                             bj < vec_len_Str(bucket); bj++) {
+                    Str *tok = vec_at_Str(bucket, bj);
+                    size_t tl = str_len(tok);
+                    if (obj_rule && token_has_dot(tok)) continue;
+                    if (tl <= n - (size_t)ii &&
+                        memcmp(s + ii, str_bytes(tok), tl) == 0) {
+                        long v = dp[ii + (long)tl] + 1;
+                        if (v < best) { best = v; pick = tok; }
+                    }
+                }
+                dp[ii] = best;
+                choice[ii] = pick;
+            }
+            for (pos = 0; pos < n; ) {
+                Str *tok = choice[pos];
+                if (tok == NULL) {
+                    if (enc != NULL) str_push(enc, (char)s[pos]);
+                    pos++;
+                } else {
+                    size_t j2;
+                    for (j2 = 0; j2 < vec_len_Str(tokens); j2++)
+                        if (vec_at_Str(tokens, j2) == tok) break;
+                    if (enc != NULL) str_push_u8(enc, (unsigned)(j2 + 127));
+                    else counts[j2]++;
+                    pos += str_len(tok);
+                }
+            }
+            if (enc != NULL) {
+                *encoded += (long)str_len(enc);
+                m->Text = enc;
+            }
+        }
+    }
+}
+
+Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
+                            TokenSet *ts, int classic_mode, int with_objects,
+                            int classic_objects, long *savings)
+{
+    Vec_Str *strings = corpus_strings(a, adv, with_objects);
+    size_t obj_from = objects_from(strings, adv, with_objects,
+                                   classic_objects);
     Vec_Str *final_tokens = vec_new_Str(a);
     long cur, original = 0, encoded = 0;
     size_t i;
@@ -515,14 +719,14 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
 
     /* Prune entries 1..n: drop when removal shrinks text+table.
        Sequential pass-1 savings are the wrong metric here. */
-    cur = tokselect_parse_total(a, strings, final_tokens);
+    cur = parse_total(a, strings, final_tokens, obj_from);
     for (sweep = 0; sweep < 2; sweep++) {
         int removed = 0;
         long j;
         for (j = (long)vec_len_Str(final_tokens) - 1; j >= 1; j--) {
             Str *tok = vec_at_Str(final_tokens, (size_t)j);
             Vec_Str *trial = vec_without(a, final_tokens, (size_t)j);
-            long tot = tokselect_parse_total(a, strings, trial);
+            long tot = parse_total(a, strings, trial, obj_from);
             if (tot - cur < (long)str_len(tok)) {
                 diag_verbose(d, "Optimal encoder: dropped token [%s].",
                              str_cstr(tok));
@@ -544,6 +748,28 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
     diag_verbose(d, "Compression tokens used: %zu.",
                  vec_len_Str(final_tokens));
 
+    /* Interpreters scan the table from entry 0 per reference: most
+       referenced first, stable insertion sort (ties keep selection order). */
+    {
+        size_t n = vec_len_Str(final_tokens);
+        long *counts = arena_calloc(a, (n + 1) * sizeof(*counts));
+        encode_texts(a, adv, final_tokens, with_objects, classic_objects,
+                     counts, &original, &encoded);
+        for (i = 2; i < n; i++) {
+            Str *kt = vec_at_Str(final_tokens, i);
+            long kc = counts[i];
+            size_t j = i;
+            while (j > 1 && counts[j - 1] < kc) {
+                vec_set_Str(final_tokens, j, vec_at_Str(final_tokens, j - 1));
+                counts[j] = counts[j - 1];
+                j--;
+            }
+            vec_set_Str(final_tokens, j, kt);
+            counts[j] = kc;
+        }
+        diag_verbose(d, "Token table ordered by use.");
+    }
+
     if (classic_mode) {
         Str *space = str_new(a);
         str_push(space, ' ');
@@ -553,68 +779,8 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                         "classic mode compatibility.");
     }
 
-    {
-        TokIndex ix;
-        long *dp;
-        Str **choice;
-        const Vec_Message *tabs[4];
-        size_t maxlen = 0, t, k;
-
-        tokindex_build(a, &ix, final_tokens);
-        for (i = 0; i < vec_len_Str(strings); i++)
-            if (str_len(vec_at_Str(strings, i)) > maxlen)
-                maxlen = str_len(vec_at_Str(strings, i));
-        dp = arena_alloc(a, (maxlen + 1) * sizeof(*dp));
-        choice = arena_alloc(a, (maxlen + 1) * sizeof(*choice));
-
-        compressable_tables(adv, tabs);
-        for (t = 0; t < 4; t++) {
-            for (k = 0; k < vec_len_Message(tabs[t]); k++) {
-                Message *m = vec_at_Message(tabs[t], k);
-                const unsigned char *s = str_bytes(m->Text);
-                size_t n = str_len(m->Text), pos;
-                Str *enc = str_new(a);
-                long ii;
-
-                original += (long)n;
-                dp[n] = 0;
-                choice[n] = NULL;
-                for (ii = (long)n - 1; ii >= 0; ii--) {
-                    long best = dp[ii + 1] + 1;
-                    Str *pick = NULL;   /* ties keep the literal */
-                    const Vec_Str *bucket = ix.by_first[s[ii]];
-                    size_t bj;
-                    for (bj = 0; bucket != NULL &&
-                                 bj < vec_len_Str(bucket); bj++) {
-                        Str *tok = vec_at_Str(bucket, bj);
-                        size_t tl = str_len(tok);
-                        if (tl <= n - (size_t)ii &&
-                            memcmp(s + ii, str_bytes(tok), tl) == 0) {
-                            long v = dp[ii + (long)tl] + 1;
-                            if (v < best) { best = v; pick = tok; }
-                        }
-                    }
-                    dp[ii] = best;
-                    choice[ii] = pick;
-                }
-                for (pos = 0; pos < n; ) {
-                    Str *tok = choice[pos];
-                    if (tok == NULL) {
-                        str_push(enc, (char)s[pos]);
-                        pos++;
-                    } else {
-                        size_t j2;
-                        for (j2 = 0; j2 < vec_len_Str(final_tokens); j2++)
-                            if (vec_at_Str(final_tokens, j2) == tok) break;
-                        str_push_u8(enc, (unsigned)(j2 + 127));
-                        pos += str_len(tok);
-                    }
-                }
-                encoded += (long)str_len(enc);
-                m->Text = enc;
-            }
-        }
-    }
+    encode_texts(a, adv, final_tokens, with_objects, classic_objects, NULL,
+                 &original, &encoded);
     *savings = original - encoded;
     return final_tokens;
 }

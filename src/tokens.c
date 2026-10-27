@@ -184,6 +184,11 @@ static TokenSet *tokens_load_from_json_bytes(Arena *a, Diag *d,
                              enc_v->str_len == 7 &&
                              strncmp(enc_v->str, "optimal", 7) == 0;
     }
+    {
+        JsonValue *obj_v = json_get(r.root, "objects");
+        ts->objects_off = ts->advanced && obj_v != NULL &&
+                          obj_v->type == JSON_BOOL && !obj_v->boolean;
+    }
     ts->tokens = vec_new_Str(a);
 
     for (i = 0; i < vec_len_JsonValue(tokens_v->items); i++) {
@@ -368,8 +373,10 @@ int tokens_write_tok(const char *path, const TokenSet *ts)
 
     if (f == NULL) return 0;
     fputs(ts->optimal_encode
-          ? "{\"compression\": \"advanced\", \"encoder\": \"optimal\", \"tokens\": ["
-          : "{\"compression\": \"advanced\", \"tokens\": [", f);
+          ? "{\"compression\": \"advanced\", \"encoder\": \"optimal\""
+          : "{\"compression\": \"advanced\"", f);
+    if (ts->objects_off) fputs(", \"objects\": false", f);
+    fputs(", \"tokens\": [", f);
     for (i = 0; i < vec_len_Str(ts->tokens); i++) {
         Str *t = vec_at_Str(ts->tokens, i);
         const unsigned char *b = str_bytes(t);

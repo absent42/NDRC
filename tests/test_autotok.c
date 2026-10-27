@@ -7,13 +7,23 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
+#include <direct.h>
 #define NDRC "ndrc.exe"
+#define NDRC_BIN "\\ndrc.exe"
+#define getcwd _getcwd
+#define chdir _chdir
+#define make_dir(p) _mkdir(p)
 #else
-#define NDRC "./ndrc"
+#include <sys/stat.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#define NDRC "./ndrc"
+#define NDRC_BIN "/ndrc"
+#define make_dir(p) mkdir(p, 0777)
 #endif
 
 #define FIXTURE "tests/fixtures/AUTOTOK.DSF"
+#define OBJSHARE "tests/fixtures/OBJSHARE.DSF"
 
 static void scratch_path(char *buf, size_t bufsz, const char *filename)
 {
@@ -31,6 +41,30 @@ static int run_ndrc(const char *args, const char *logpath)
 
     snprintf(cmd, sizeof cmd, NDRC " %s > \"%s\" 2>&1", args, logpath);
     rc = system(cmd);
+#ifndef _WIN32
+    if (rc != -1 && WIFEXITED(rc)) rc = WEXITSTATUS(rc);
+#endif
+    return rc;
+}
+
+/* Runs ndrc with cwd = dir (0.XMB is written to the cwd); paths in
+   args must be absolute. */
+static int run_ndrc_in(const char *dir, const char *root, const char *args,
+                       const char *logpath)
+{
+    char cmd[4096];
+    int rc;
+
+#ifdef _WIN32
+    snprintf(cmd, sizeof cmd, "\"\"%s" NDRC_BIN "\" %s > \"%s\" 2>&1\"",
+             root, args, logpath);
+#else
+    snprintf(cmd, sizeof cmd, "\"%s" NDRC_BIN "\" %s > \"%s\" 2>&1",
+             root, args, logpath);
+#endif
+    if (chdir(dir) != 0) return -1;
+    rc = system(cmd);
+    if (chdir(root) != 0) return -1;
 #ifndef _WIN32
     if (rc != -1 && WIFEXITED(rc)) rc = WEXITSTATUS(rc);
 #endif
@@ -96,10 +130,148 @@ static int log_contains(const char *logpath, const char *needle)
     return found;
 }
 
+/* 1-based line of the first match, -1 if absent. */
+static int log_line_of(const char *logpath, const char *needle)
+{
+    FILE *f = fopen(logpath, "rb");
+    char line[1024];
+    int n = 0, at = -1;
+
+    if (f == NULL) return -1;
+    while (fgets(line, sizeof line, f) != NULL) {
+        n++;
+        if (strstr(line, needle) != NULL) { at = n; break; }
+    }
+    fclose(f);
+    return at;
+}
+
 static void write_text(const char *path, const char *content)
 {
     FILE *f = fopen(path, "wb");
     if (f != NULL) { fputs(content, f); fclose(f); }
+}
+
+/* Whole file into buf; NULL on failure or overflow. */
+static unsigned char *read_ddb(const char *path, unsigned char *buf,
+                               size_t bufsz, long *len)
+{
+    FILE *f = fopen(path, "rb");
+    size_t n;
+
+    if (f == NULL) return NULL;
+    n = fread(buf, 1, bufsz, f);
+    fclose(f);
+    *len = (long)n;
+    return n > 0 && n < bufsz ? buf : NULL;
+}
+
+static unsigned ddb_word(const unsigned char *ddb, long at)
+{
+    return (unsigned)ddb[at] | ((unsigned)ddb[at + 1] << 8);
+}
+
+/* Table kind: 0 sysmess, 1 messages, 2 locations, 3 objects. */
+static int ddb_count(const unsigned char *ddb, int kind)
+{
+    return ddb[6 - kind];
+}
+
+static unsigned ddb_lookup_word(const unsigned char *ddb, int kind, int index)
+{
+    return ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) + 2L * index);
+}
+
+/* Decodes the text at src[p], expanding tokens through the DDB's token
+   table (pointer at 0x08); bytes XOR 0xFF, 0x0A ends a text. */
+static int text_at(const unsigned char *src, long slen, long p,
+                   const unsigned char *ddb, long len, long base,
+                   char *out, size_t outsz)
+{
+    long t;
+    size_t o = 0;
+    int entry;
+
+    for (;;) {
+        unsigned b;
+        if (p < 0 || p >= slen) return 0;
+        b = src[p++] ^ 0xFFu;
+        if (b == 0x0A) break;
+        if (b < 128) {
+            if (o + 1 >= outsz) return 0;
+            out[o++] = (char)b;
+            continue;
+        }
+        /* Token entry (b - 127); entry 0 is the first in the table. */
+        t = (long)ddb_word(ddb, 0x08) - base;
+        for (entry = 0; entry < (int)b - 127; entry++) {
+            while (t < len && !(ddb[t] & 0x80)) t++;
+            t++;
+        }
+        do {
+            if (t >= len || o + 1 >= outsz) return 0;
+            out[o++] = (char)(ddb[t] & 0x7F);
+        } while (!(ddb[t++] & 0x80));
+    }
+    out[o] = '\0';
+    return 1;
+}
+
+/* Decodes entry `index` of table `kind` via its lookup word. Header:
+   count at 6-kind, lookup pointer at 0x12-2*kind. */
+static int ddb_text_b(const unsigned char *ddb, long len, long base,
+                      int kind, int index, char *out, size_t outsz)
+{
+    long p = (long)ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) - base
+                                 + 2L * index) - base;
+
+    if (index >= ddb_count(ddb, kind)) return 0;
+    return text_at(ddb, len, p, ddb, len, base, out, outsz);
+}
+
+/* Text at XMB offset off; tokens come from the DDB. */
+static int xmb_text(const unsigned char *xmb, long xlen, long off,
+                    const unsigned char *ddb, long len, char *out,
+                    size_t outsz)
+{
+    return text_at(xmb, xlen, off, ddb, len, 0, out, outsz);
+}
+
+static int ddb_text(const unsigned char *ddb, long len, int kind, int index,
+                    char *out, size_t outsz)
+{
+    return ddb_text_b(ddb, len, 0, kind, index, out, outsz);
+}
+
+/* Stored (un-XORed, unexpanded) bytes of an entry up to its 0x0A;
+   addresses are relative to base. Returns the count, -1 on overrun. */
+static long ddb_stored(const unsigned char *ddb, long len, long base,
+                       int kind, int index, unsigned char *out, size_t outsz)
+{
+    long p = (long)ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) - base
+                                 + 2L * index) - base;
+    size_t o = 0;
+
+    for (; p >= 0 && p < len; p++) {
+        unsigned b = ddb[p] ^ 0xFFu;
+        if (b == 0x0A) return (long)o;
+        if (o >= outsz) return -1;
+        out[o++] = (unsigned char)b;
+    }
+    return -1;
+}
+
+static int ddb_has_ref_byte(const unsigned char *ddb, long len, int kind,
+                            int index)
+{
+    long p = ddb_lookup_word(ddb, kind, index);
+
+    for (; p < len; p++) {
+        unsigned b = ddb[p] ^ 0xFFu;
+        if (b == 0x0A) return 0;
+        if (b >= 128) return 1;
+    }
+    return 0;
 }
 
 TEST(auto_tokens_beats_builtin)
@@ -135,7 +307,7 @@ TEST(tok_tee_roundtrips_to_identical_ddb)
     scratch_path(out2, sizeof out2, "at_rt2.ddb");
     scratch_path(logp, sizeof logp, "at_rt_log.txt");
     remove(tok);
-    CHECK(copy_file(FIXTURE, dsf));
+    CHECK(copy_file(OBJSHARE, dsf));
 
     /* --tok (bare) writes <input>.tok beside the input. */
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" --tok",
@@ -216,11 +388,413 @@ TEST(marker_engages_optimal_encoder)
     remove(tok);
 }
 
+static unsigned char ddb_ctl[65536], ddb_auto[65536];
+
+TEST(objects_compressed_and_duplicates_shared)
+{
+    char out0[512], out1[512], logp[512], args[1600];
+    char t0[512], t1[512];
+    long n0 = 0, n1 = 0;
+    int kind, i;
+
+    scratch_path(out0, sizeof out0, "os_ctl.ddb");
+    scratch_path(out1, sizeof out1, "os_auto.ddb");
+    scratch_path(logp, sizeof logp, "os_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\"", OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(read_ddb(out0, ddb_ctl, sizeof ddb_ctl, &n0) != NULL);
+    CHECK(read_ddb(out1, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    if (n0 == 0 || n1 == 0) return;
+
+    CHECK(ddb_has_ref_byte(ddb_auto, n1, 3, 0));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 3, 0), ddb_lookup_word(ddb_auto, 3, 3));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 1, 7), ddb_lookup_word(ddb_auto, 1, 8));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 1, 9), ddb_lookup_word(ddb_auto, 1, 10));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 2, 0), ddb_lookup_word(ddb_auto, 2, 2));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 0, 63), ddb_lookup_word(ddb_auto, 0, 64));
+
+    for (kind = 0; kind < 4; kind++) {
+        CHECK_INT(ddb_count(ddb_auto, kind), ddb_count(ddb_ctl, kind));
+        for (i = 0; i < ddb_count(ddb_ctl, kind); i++) {
+            t0[0] = t1[0] = '\0';
+            CHECK(ddb_text(ddb_ctl, n0, kind, i, t0, sizeof t0));
+            CHECK(ddb_text(ddb_auto, n1, kind, i, t1, sizeof t1));
+            CHECK_STR(t1, t0);
+        }
+    }
+}
+
+TEST(flag_off_rows_untouched)
+{
+    char out0[512], logp[512], args[1600];
+    long n0 = 0;
+    int kind, i, j;
+
+    scratch_path(out0, sizeof out0, "os_off.ddb");
+    scratch_path(logp, sizeof logp, "os_off_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\"", OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(read_ddb(out0, ddb_ctl, sizeof ddb_ctl, &n0) != NULL);
+    if (n0 == 0) return;
+
+    for (i = 0; i < ddb_count(ddb_ctl, 3); i++)
+        CHECK(!ddb_has_ref_byte(ddb_ctl, n0, 3, i));
+    for (kind = 0; kind < 4; kind++)
+        for (i = 0; i < ddb_count(ddb_ctl, kind); i++)
+            for (j = i + 1; j < ddb_count(ddb_ctl, kind); j++)
+                CHECK(ddb_lookup_word(ddb_ctl, kind, i) !=
+                      ddb_lookup_word(ddb_ctl, kind, j));
+}
+
+TEST(verbose_reports_objects_and_shares)
+{
+    char out1[512], logp[512], args[1600];
+
+    scratch_path(out1, sizeof out1, "os_v.ddb");
+    scratch_path(logp, sizeof logp, "os_v_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens -v",
+             OBJSHARE, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(logp, "Object texts compressed."));
+    CHECK(log_contains(logp, "Shared 1 duplicate texts in objects ("));
+    CHECK(log_contains(logp, "Token table ordered by use."));
+}
+
+TEST(tee_written_only_after_file_check)
+{
+    /* Positive path: the tee follows a passing file check. The failing
+       path is unit-tested in test_tokselect.c. */
+    char dsf[512], tok[512], out1[512], logp[512], args[1600];
+
+    scratch_path(dsf, sizeof dsf, "fc_tee.DSF");
+    scratch_path(tok, sizeof tok, "fc_tee.tok");
+    scratch_path(out1, sizeof out1, "fc_tee.ddb");
+    scratch_path(logp, sizeof logp, "fc_tee_log.txt");
+    remove(tok);
+    remove(out1);
+    CHECK(copy_file(OBJSHARE, dsf));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" --tok -v",
+             dsf, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(file_size(tok) > 0);
+    CHECK(file_size(out1) > 0);
+    CHECK(!log_contains(logp, "self-check failed"));
+    /* The check runs once the location lookup is out. */
+    CHECK(log_line_of(logp, "Locations         ") > 0);
+    CHECK(log_line_of(logp, "Tokens written to") >
+          log_line_of(logp, "Locations         "));
+    remove(tok);
+}
+
+/* The container warning line holds the plain text, no reference byte. */
+static int container_warning_ok(const char *logpath, const char *text)
+{
+    FILE *f = fopen(logpath, "rb");
+    char line[1024];
+    const unsigned char *c;
+    int ok = 0;
+
+    if (f == NULL) return 0;
+    while (fgets(line, sizeof line, f) != NULL) {
+        if (strstr(line, "is a container.") == NULL) continue;
+        for (c = (const unsigned char *)line; *c != '\0'; c++)
+            if (*c >= 0x80) { fclose(f); return 0; }
+        if (strstr(line, text) != NULL) ok = 1;
+    }
+    fclose(f);
+    return ok;
+}
+
+TEST(container_warning_prints_source_text)
+{
+    char out0[512], logp[512], args[1600];
+    const char *want = "Warning: object #0 (a brass lantern of the old kind) "
+                       "is a container.";
+
+    scratch_path(out0, sizeof out0, "cw.ddb");
+    scratch_path(logp, sizeof logp, "cw_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\"", OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(logp, "has a description."));
+    CHECK(container_warning_ok(logp, want));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(logp, "has a description."));
+    CHECK(container_warning_ok(logp, want));
+}
+
+/* Classic targets: an object text's first word and the space run
+   after it stay literal, so the stored first space sits at the decoded
+   first space. NEXTDAAD keeps the unrestricted encoding. */
+TEST(classic_objects_keep_first_word_literal)
+{
+    char out0[512], logp[512], args[1600], txt[512];
+    unsigned char raw[512];
+    long n0 = 0, sn, k;
+    int i, refs_in_prefix = 0;
+
+    scratch_path(out0, sizeof out0, "co_zx.ddb");
+    scratch_path(logp, sizeof logp, "co_zx_log.txt");
+    snprintf(args, sizeof args, "ZX 48K EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(read_ddb(out0, ddb_auto, sizeof ddb_auto, &n0) != NULL);
+    if (n0 == 0) return;
+
+    CHECK(ddb_count(ddb_auto, 3) == 8);
+    for (i = 0; i < ddb_count(ddb_auto, 3); i++) {
+        const char *sp;
+        long dpos, spos = -1;
+        CHECK(ddb_text_b(ddb_auto, n0, 0x8400, 3, i, txt, sizeof txt));
+        sn = ddb_stored(ddb_auto, n0, 0x8400, 3, i, raw, sizeof raw);
+        CHECK(sn > 0);
+        if (sn <= 0) continue;
+        CHECK(raw[0] < 0x80);
+        sp = strchr(txt, ' ');
+        CHECK(sp != NULL);
+        if (sp == NULL) continue;
+        dpos = (long)(sp - txt);
+        for (k = 0; k < sn; k++)
+            if (raw[k] == ' ') { spos = k; break; }
+        CHECK_INT(spos, dpos);
+        for (k = 0; k <= dpos && k < sn; k++)
+            if (raw[k] >= 0x80) refs_in_prefix++;
+        for (k = dpos; k < sn && txt[k] == ' '; k++)
+            CHECK_INT(raw[k], ' ');
+    }
+    CHECK_INT(refs_in_prefix, 0);
+    /* The rule still leaves object 0's tail compressed. */
+    sn = ddb_stored(ddb_auto, n0, 0x8400, 3, 0, raw, sizeof raw);
+    for (k = 0, i = 0; k < sn; k++) if (raw[k] >= 0x80) i = 1;
+    CHECK_INT(i, 1);
+}
+
+TEST(nextdaad_objects_unrestricted)
+{
+    char out1[512], logp[512], args[1600], txt[512];
+    unsigned char raw[512];
+    long n1 = 0, sn, k;
+    int i, refs_in_prefix = 0;
+
+    scratch_path(out1, sizeof out1, "co_nd.ddb");
+    scratch_path(logp, sizeof logp, "co_nd_log.txt");
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(read_ddb(out1, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    if (n1 == 0) return;
+    /* Tokens may cover the first word or space on NEXTDAAD. */
+    for (i = 0; i < ddb_count(ddb_auto, 3); i++) {
+        const char *sp;
+        CHECK(ddb_text(ddb_auto, n1, 3, i, txt, sizeof txt));
+        sn = ddb_stored(ddb_auto, n1, 0, 3, i, raw, sizeof raw);
+        sp = strchr(txt, ' ');
+        if (sn <= 0 || sp == NULL) continue;
+        for (k = 0; k <= (long)(sp - txt) && k < sn; k++)
+            if (raw[k] >= 0x80) refs_in_prefix++;
+    }
+    CHECK(refs_in_prefix > 0);
+}
+
+/* N from "Text compression savings: N bytes.", -1 if absent. */
+static long log_savings(const char *logpath)
+{
+    FILE *f = fopen(logpath, "rb");
+    char line[1024];
+    long n = -1;
+    const char *key = "Text compression savings: ";
+
+    if (f == NULL) return -1;
+    while (fgets(line, sizeof line, f) != NULL) {
+        const char *p = strstr(line, key);
+        if (p != NULL) { n = strtol(p + strlen(key), NULL, 10); break; }
+    }
+    fclose(f);
+    return n;
+}
+
+TEST(no_object_tokens_keeps_objects_plain)
+{
+    char out0[512], out1[512], out2[512], logp[512], args[1600];
+    char t0[512], t1[512];
+    long n0 = 0, n1 = 0, s_on, s_off;
+    int kind, i;
+
+    scratch_path(out0, sizeof out0, "no_ctl.ddb");
+    scratch_path(out1, sizeof out1, "no_on.ddb");
+    scratch_path(out2, sizeof out2, "no_off.ddb");
+    scratch_path(logp, sizeof logp, "no_log.txt");
+
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\"", OBJSHARE, out0);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN %s \"%s\" -auto-tokens",
+             OBJSHARE, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    s_on = log_savings(logp);
+    snprintf(args, sizeof args,
+             "NEXTDAAD EN %s \"%s\" -no-object-tokens -auto-tokens -v",
+             OBJSHARE, out2);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    s_off = log_savings(logp);
+    CHECK(!log_contains(logp, "Object texts compressed."));
+    CHECK(log_contains(logp, "Shared 1 duplicate texts in objects ("));
+    CHECK(s_off > 0);
+    CHECK(s_off < s_on);
+
+    CHECK(read_ddb(out0, ddb_ctl, sizeof ddb_ctl, &n0) != NULL);
+    CHECK(read_ddb(out2, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    if (n0 == 0 || n1 == 0) return;
+    for (i = 0; i < ddb_count(ddb_auto, 3); i++)
+        CHECK(!ddb_has_ref_byte(ddb_auto, n1, 3, i));
+    /* Duplicates still shared, other tables still compressed. */
+    CHECK_INT(ddb_lookup_word(ddb_auto, 3, 0), ddb_lookup_word(ddb_auto, 3, 3));
+    CHECK_INT(ddb_lookup_word(ddb_auto, 1, 7), ddb_lookup_word(ddb_auto, 1, 8));
+    for (kind = 0; kind < 4; kind++) {
+        CHECK_INT(ddb_count(ddb_auto, kind), ddb_count(ddb_ctl, kind));
+        for (i = 0; i < ddb_count(ddb_ctl, kind); i++) {
+            t0[0] = t1[0] = '\0';
+            CHECK(ddb_text(ddb_ctl, n0, kind, i, t0, sizeof t0));
+            CHECK(ddb_text(ddb_auto, n1, kind, i, t1, sizeof t1));
+            CHECK_STR(t1, t0);
+        }
+    }
+}
+
+TEST(no_object_tokens_tee_reloads_identically)
+{
+    char dsf[512], tok[512], json[512], out1[512], out2[512], out3[512];
+    char logp[512], args[1600];
+
+    scratch_path(dsf, sizeof dsf, "no_rt.DSF");
+    scratch_path(tok, sizeof tok, "no_rt.tok");
+    scratch_path(json, sizeof json, "no_rt.json");
+    scratch_path(out1, sizeof out1, "no_rt1.ddb");
+    scratch_path(out2, sizeof out2, "no_rt2.ddb");
+    scratch_path(out3, sizeof out3, "no_rt3.ddb");
+    scratch_path(logp, sizeof logp, "no_rt_log.txt");
+    remove(tok);
+    CHECK(copy_file(OBJSHARE, dsf));
+
+    snprintf(args, sizeof args,
+             "NEXTDAAD EN \"%s\" \"%s\" --tok -no-object-tokens \"--json=%s\"",
+             dsf, out1, json);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(log_contains(tok, "\"encoder\": \"optimal\", \"objects\": false"));
+
+    /* Flagless reload of the tee. */
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out2);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(files_equal(out1, out2));
+    remove(tok);
+
+    /* --from-json accepts the option too. */
+    snprintf(args, sizeof args,
+             "--from-json NEXTDAAD EN \"%s\" \"%s\" -auto-tokens -no-object-tokens",
+             json, out3);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(files_equal(out1, out3));
+}
+
+TEST(no_object_tokens_requires_auto_tokens)
+{
+    char dsf[512], tok[512], out1[512], logp[512], args[1600];
+
+    scratch_path(dsf, sizeof dsf, "no_rq.DSF");
+    scratch_path(tok, sizeof tok, "no_rq.tok");
+    scratch_path(out1, sizeof out1, "no_rq.ddb");
+    scratch_path(logp, sizeof logp, "no_rq_log.txt");
+    remove(tok);
+    CHECK(copy_file(OBJSHARE, dsf));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -no-object-tokens",
+             dsf, out1);
+    CHECK_INT(run_ndrc(args, logp), 2);
+    CHECK(log_contains(logp, "-no-object-tokens requires -auto-tokens"));
+
+    /* An unmarked .tok does not qualify; a marked one does. */
+    write_text(tok, "{\"compression\": \"advanced\", "
+                    "\"tokens\": [\"00\",\"7468\"]}");
+    CHECK_INT(run_ndrc(args, logp), 2);
+    write_text(tok, "{\"compression\": \"advanced\", "
+                    "\"encoder\": \"optimal\", \"tokens\": [\"00\",\"7468\"]}");
+    CHECK_INT(run_ndrc(args, logp), 0);
+    remove(tok);
+}
+
+static unsigned char xmb_buf[65536];
+
+TEST(dump_x_shares_in_xmb)
+{
+    /* Duplicate pairs: messages 7/8, sysmess 63/64 (sysmess 0-62
+       stay in the DDB under -x). */
+    static const int pair[2][3] = { { 1, 7, 8 }, { 0, 63, 64 } };
+    char root[1024], dir[512], dsf[1100], xmb[600], out0[600], out1[600];
+    char logp[600], args[3000], t0[512], t1[512];
+    long n0 = 0, n1 = 0, nx = 0;
+    int k;
+
+    CHECK(getcwd(root, sizeof root) != NULL);
+    scratch_path(dir, sizeof dir, "ndrc_xmb");
+    make_dir(dir);
+    snprintf(dsf, sizeof dsf, "%s/%s", root, OBJSHARE);
+    snprintf(xmb, sizeof xmb, "%s/0.XMB", dir);
+    snprintf(out0, sizeof out0, "%s/x_ctl.ddb", dir);
+    snprintf(out1, sizeof out1, "%s/x_auto.ddb", dir);
+    snprintf(logp, sizeof logp, "%s/x_log.txt", dir);
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out0);
+    CHECK_INT(run_ndrc_in(dir, root, args, logp), 0);
+    remove(xmb);
+    snprintf(args, sizeof args,
+             "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens -x -v", dsf, out1);
+    CHECK_INT(run_ndrc_in(dir, root, args, logp), 0);
+    CHECK(log_contains(logp, "File check: skipped "));
+    CHECK(read_ddb(out0, ddb_ctl, sizeof ddb_ctl, &n0) != NULL);
+    CHECK(read_ddb(out1, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    CHECK(read_ddb(xmb, xmb_buf, sizeof xmb_buf, &nx) != NULL);
+    if (n0 == 0 || n1 == 0 || nx == 0) return;
+
+    for (k = 0; k < 2; k++) {
+        int kind = pair[k][0];
+        unsigned w = ddb_lookup_word(ddb_auto, kind, pair[k][1]);
+        CHECK_INT(ddb_lookup_word(ddb_auto, kind, pair[k][2]), w);
+        CHECK((long)w < nx);
+        t0[0] = t1[0] = '\0';
+        CHECK(ddb_text(ddb_ctl, n0, kind, pair[k][1], t0, sizeof t0));
+        CHECK(xmb_text(xmb_buf, nx, (long)w, ddb_auto, n1, t1, sizeof t1));
+        CHECK_STR(t1, t0);
+        CHECK(ddb_text(ddb_ctl, n0, kind, pair[k][2], t0, sizeof t0));
+        CHECK_STR(t1, t0);
+    }
+    remove(xmb);
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
     RUN(tok_tee_roundtrips_to_identical_ddb);
     RUN(auto_tokens_overrides_tok_with_notice);
     RUN(marker_engages_optimal_encoder);
+    RUN(objects_compressed_and_duplicates_shared);
+    RUN(flag_off_rows_untouched);
+    RUN(verbose_reports_objects_and_shares);
+    RUN(tee_written_only_after_file_check);
+    RUN(container_warning_prints_source_text);
+    RUN(classic_objects_keep_first_word_literal);
+    RUN(nextdaad_objects_unrestricted);
+    RUN(no_object_tokens_keeps_objects_plain);
+    RUN(no_object_tokens_tee_reloads_identically);
+    RUN(no_object_tokens_requires_auto_tokens);
+    RUN(dump_x_shares_in_xmb);
     return test_summary("autotok");
 }

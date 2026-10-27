@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.4.0 - unreleased
+
+- `-auto-tokens` compresses object texts too: they join the
+  compressable set under the optimal encoder.
+- `-auto-tokens` emits identical texts within a table once: the
+  lookup table points every duplicate at the one copy.
+- A marked `.tok` (`"encoder": "optimal"`) compiles with both on
+  reload, so `-auto-tokens` and marked-.tok output is smaller than the
+  0.3.0 build produced, and decodes identically. Unmarked and
+  hand-written `.tok` files and the builtin table compile exactly as
+  DRC would.
+- New `-no-object-tokens` option keeps object texts uncompressed under
+  `-auto-tokens` or a marked `.tok`, for interpreters the object-text
+  compression was not verified on; sharing stays on. A `--tok` tee
+  records it as `"objects": false`.
+- On targets other than NEXTDAAD, object texts keep their first word,
+  the spaces after it and every `.` uncompressed (a text with no space
+  stays uncompressed), because the original interpreters strip the
+  article by scanning stored bytes for the first space.
+- Under `-auto-tokens` and a marked `.tok` the token table is emitted
+  most-referenced first, so interpreters scanning the table find common
+  tokens sooner. Format unchanged.
+- The compiler verifies the emitted DDB by decoding every text through
+  its lookup table before writing it.
+- The DDB stays format-identical and decodes on every DAAD
+  interpreter. Verified on NextDAAD hardware and, under emulation, on
+  the original ZX Spectrum 48K, Amstrad CPC, MSX1 and PCDAAD
+  interpreters with a fixture exercising compressed object texts,
+  `_` substitution, articles, More... inside lists and every shared
+  duplicate.
+
 ## v0.3.0 - 25/10/2026
 
 - New `-srcmap=<path>` option: writes a DSM v2 source map beside the

@@ -38,7 +38,7 @@
 #include "front/symbols.h"
 #include "front/tokenlist.h"
 
-#define NDRC_VERSION "0.3.0"
+#define NDRC_VERSION "0.4.0"
 
 static int file_exists(const char *path)
 {
@@ -96,6 +96,11 @@ static int drb_match_option(Arena *a, BackendOptions *opts, const char *raw_arg)
        implies -auto-tokens: a tee of an unselected table says nothing. */
     if (strcmp(raw_arg, "-auto-tokens") == 0) {
         opts->auto_tokens = 1;
+        return 1;
+    }
+    /* Validated in backend_run, once the .tok lookup has run. */
+    if (strcmp(raw_arg, "-no-object-tokens") == 0) {
+        opts->no_object_tokens = 1;
         return 1;
     }
     if (strcmp(raw_arg, "--tok") == 0 ||

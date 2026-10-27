@@ -40,11 +40,13 @@ void emit_object_initially(Str *out, long *addr, const Adventure *adv)
    passes count()<=locno (never negative), so the undefined-index read
    yields NULL, NULL != '' is false, and neither warning fires -
    matched by falling through without printing. */
-void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv)
+void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv,
+                             const Vec_Message *object_texts)
 {
     size_t i, n = vec_len_ObjectData(adv->object_data);
     long locations_n = (long)vec_len_Message(adv->locations);
-    size_t objects_n = vec_len_Message(adv->objects);
+    /* Not adv->objects: the optimal path compresses it before this runs. */
+    size_t objects_n = vec_len_Message(object_texts);
 
     for (i = 0; i < n; i++) {
         const ObjectData *o = vec_at_ObjectData(adv->object_data, i);
@@ -56,7 +58,7 @@ void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv
 
             b |= 0x40;
             if (locno >= 0 && (size_t)locno < objects_n) {
-                const Message *otext = vec_at_Message(adv->objects, (size_t)locno);
+                const Message *otext = vec_at_Message(object_texts, (size_t)locno);
                 text = str_cstr(otext->Text);
             }
             if (locations_n <= locno) {

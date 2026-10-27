@@ -48,9 +48,15 @@ int emit_externs(Str *out, long *addr, Diag *d, Adventure *adv, const Target *t)
    branch below unreachable and xmb/xmb_addr simply unused. Both are
    nullable: NULL/ignored whenever dump_to_xmb is 0 for every message in
    msgs - the common case, and always true at OTX's own call site,
-   which hard-codes 0 (main.c). */
+   which hard-codes 0 (main.c).
+   share: a text equal to an earlier one in the same call and destination
+   reuses its offset and writes nothing. stats (nullable) accumulates
+   texts shared and bytes not written (text + terminator). */
+typedef struct { long texts; long bytes; } ShareStats;
+
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
-                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr);
+                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
+                    int share, ShareStats *stats);
 
 /* PORT: generateXMessages drb.php:449-524. Writes the XMB file(s) into
    the current working directory and fills adv->xmessage_offsets/size/
@@ -62,8 +68,10 @@ int emit_xmessages(Diag *d, const Target *t, Adventure *adv);
 void emit_object_names(Str *out, long *addr, const Adventure *adv);
 
 /* PORT: drb.php:737-755 generateObjectWeightAndAttr, including the two
-   container warnings (drb.php:747, 749), reported via diag_note. */
-void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv);
+   container warnings (drb.php:747, 749), reported via diag_note.
+   object_texts supplies the warning's object text (uncompressed). */
+void emit_object_weight_attr(Str *out, long *addr, Diag *d, const Adventure *adv,
+                             const Vec_Message *object_texts);
 
 /* PORT: drb.php:757-765 generateObjectExtraAttr. */
 void emit_object_extra_attr(Str *out, long *addr, const Target *t, const Adventure *adv);
