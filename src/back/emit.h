@@ -48,9 +48,15 @@ int emit_externs(Str *out, long *addr, Diag *d, Adventure *adv, const Target *t)
    branch below unreachable and xmb/xmb_addr simply unused. Both are
    nullable: NULL/ignored whenever dump_to_xmb is 0 for every message in
    msgs - the common case, and always true at OTX's own call site,
-   which hard-codes 0 (main.c). */
+   which hard-codes 0 (main.c).
+   share: a text equal to an earlier one in the same call and destination
+   reuses its offset and writes nothing. stats (nullable) accumulates
+   texts shared and bytes not written (text + terminator). */
+typedef struct { long texts; long bytes; } ShareStats;
+
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
-                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr);
+                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
+                    int share, ShareStats *stats);
 
 /* PORT: generateXMessages drb.php:449-524. Writes the XMB file(s) into
    the current working directory and fills adv->xmessage_offsets/size/

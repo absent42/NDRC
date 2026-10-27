@@ -18,16 +18,20 @@
    parity being checked regardless of which handle receives the bytes. */
 #include "emit.h"
 
+#include <string.h>
+
 #include "arena.h"
 
 #define OFUSCATE_VALUE 0xFFu
 #define LAST_DEFAULT_SYSMESS 62   /* drb.php:36 */
 
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
-                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr)
+                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
+                    int share, ShareStats *stats)
 {
     size_t n = vec_len_Message(msgs);
     long *offsets = n ? arena_alloc(str_arena(out), n * sizeof(long)) : NULL;
+    unsigned char *dest = (share && n) ? arena_alloc(str_arena(out), n) : NULL;
     size_t i;
 
     for (i = 0; i < n; i++) {
@@ -37,6 +41,26 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
         int dump_this_to_xmb = dump_to_xmb && !(is_stx && (long)i <= LAST_DEFAULT_SYSMESS);
         const unsigned char *bytes;
         size_t len, j;
+
+        if (share) {
+            /* Not in DRC: a duplicate skips its copy and its pad. */
+            dest[i] = (unsigned char)dump_this_to_xmb;
+            len = str_len(m->Text);
+            for (j = 0; j < i; j++) {
+                const Str *prev = vec_at_Message(msgs, j)->Text;
+                if (dest[j] == dest[i] && str_len(prev) == len &&
+                    memcmp(str_bytes(prev), str_bytes(m->Text), len) == 0)
+                    break;
+            }
+            if (j < i) {
+                offsets[i] = offsets[j];
+                if (stats) {
+                    stats->texts++;
+                    stats->bytes += (long)len + 1;
+                }
+                continue;
+            }
+        }
 
         /* PORT: drb.php:534 - addPaddingIfRequired runs before the
            per-message dump decision is acted on, against the DDB's own

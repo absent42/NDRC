@@ -553,7 +553,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        so the -x flag can find them (see the PHP comment there). xmb_fh/
        &xmb_addr are threaded through regardless (unused down that
        branch when the dump flag passed here is 0). */
-    emit_messages(out, &addr, target, adv->objects, 0, 0, xmb_fh, &xmb_addr);
+    emit_messages(out, &addr, target, adv->objects, 0, 0, xmb_fh, &xmb_addr, 0, NULL);
     /* PORT: drb.php:1942 - the object_data-not-objects quirk (S12/
        S6.6): the lookup table is 2 bytes per OBJECT_DATA entry, not
        per OTX (objects) entry, even though it is OTX's own address
@@ -654,7 +654,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        is_stx=1 marks the sysmess call (drb.php:532's LAST_DEFAULT_
        SYSMESS special case); dump_to_xmb is this task's own local flag,
        matching drb.php:1999's $adventure->dumpToXMB read. */
-    emit_messages(out, &addr, target, adv->sysmess, opts->dump_to_xmb, 1, xmb_fh, &xmb_addr);
+    emit_messages(out, &addr, target, adv->sysmess, opts->dump_to_xmb, 1, xmb_fh, &xmb_addr, 0, NULL);
     sysmess_lookup_offset = addr - 2 * (long)vec_len_Message(adv->sysmess);
     print_map_line(opts->verbose, "Sysmess           ", sysmess_lookup_offset);
     layout_pad(out, &addr, target);
@@ -662,7 +662,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     previous_address = addr;
 
     /* PORT: drb.php:2006-2012 generateMTX. */
-    emit_messages(out, &addr, target, adv->messages, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr);
+    emit_messages(out, &addr, target, adv->messages, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, 0, NULL);
     message_lookup_offset = addr - 2 * (long)vec_len_Message(adv->messages);
     print_map_line(opts->verbose, "Messages          ", message_lookup_offset);
     layout_pad(out, &addr, target);
@@ -670,7 +670,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     previous_address = addr;
 
     /* PORT: drb.php:2015-2021 generateLTX. */
-    emit_messages(out, &addr, target, adv->locations, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr);
+    emit_messages(out, &addr, target, adv->locations, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, 0, NULL);
     location_lookup_offset = addr - 2 * (long)vec_len_Message(adv->locations);
     print_map_line(opts->verbose, "Locations         ", location_lookup_offset);
     layout_pad(out, &addr, target);
