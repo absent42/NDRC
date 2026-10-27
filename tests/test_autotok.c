@@ -7,10 +7,19 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
+#include <direct.h>
 #define NDRC "ndrc.exe"
+#define NDRC_BIN "\\ndrc.exe"
+#define getcwd _getcwd
+#define chdir _chdir
+#define make_dir(p) _mkdir(p)
 #else
-#define NDRC "./ndrc"
+#include <sys/stat.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#define NDRC "./ndrc"
+#define NDRC_BIN "/ndrc"
+#define make_dir(p) mkdir(p, 0777)
 #endif
 
 #define FIXTURE "tests/fixtures/AUTOTOK.DSF"
@@ -32,6 +41,30 @@ static int run_ndrc(const char *args, const char *logpath)
 
     snprintf(cmd, sizeof cmd, NDRC " %s > \"%s\" 2>&1", args, logpath);
     rc = system(cmd);
+#ifndef _WIN32
+    if (rc != -1 && WIFEXITED(rc)) rc = WEXITSTATUS(rc);
+#endif
+    return rc;
+}
+
+/* Runs ndrc with cwd = dir (0.XMB is written to the cwd); paths in
+   args must be absolute. */
+static int run_ndrc_in(const char *dir, const char *root, const char *args,
+                       const char *logpath)
+{
+    char cmd[4096];
+    int rc;
+
+#ifdef _WIN32
+    snprintf(cmd, sizeof cmd, "\"\"%s" NDRC_BIN "\" %s > \"%s\" 2>&1\"",
+             root, args, logpath);
+#else
+    snprintf(cmd, sizeof cmd, "\"%s" NDRC_BIN "\" %s > \"%s\" 2>&1",
+             root, args, logpath);
+#endif
+    if (chdir(dir) != 0) return -1;
+    rc = system(cmd);
+    if (chdir(root) != 0) return -1;
 #ifndef _WIN32
     if (rc != -1 && WIFEXITED(rc)) rc = WEXITSTATUS(rc);
 #endif
@@ -149,22 +182,20 @@ static unsigned ddb_lookup_word(const unsigned char *ddb, int kind, int index)
     return ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) + 2L * index);
 }
 
-/* Decodes entry `index` of table `kind` via its lookup word, expanding
-   tokens. Header: count at 6-kind, lookup pointer at 0x12-2*kind,
-   tokens at 0x08; text bytes XOR 0xFF, 0x0A ends a text. */
-static int ddb_text_b(const unsigned char *ddb, long len, long base,
-                      int kind, int index, char *out, size_t outsz)
+/* Decodes the text at src[p], expanding tokens through the DDB's token
+   table (pointer at 0x08); bytes XOR 0xFF, 0x0A ends a text. */
+static int text_at(const unsigned char *src, long slen, long p,
+                   const unsigned char *ddb, long len, long base,
+                   char *out, size_t outsz)
 {
-    long p = (long)ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) - base
-                                 + 2L * index) - base, t;
+    long t;
     size_t o = 0;
     int entry;
 
-    if (index >= ddb_count(ddb, kind)) return 0;
     for (;;) {
         unsigned b;
-        if (p >= len) return 0;
-        b = ddb[p++] ^ 0xFFu;
+        if (p < 0 || p >= slen) return 0;
+        b = src[p++] ^ 0xFFu;
         if (b == 0x0A) break;
         if (b < 128) {
             if (o + 1 >= outsz) return 0;
@@ -184,6 +215,26 @@ static int ddb_text_b(const unsigned char *ddb, long len, long base,
     }
     out[o] = '\0';
     return 1;
+}
+
+/* Decodes entry `index` of table `kind` via its lookup word. Header:
+   count at 6-kind, lookup pointer at 0x12-2*kind. */
+static int ddb_text_b(const unsigned char *ddb, long len, long base,
+                      int kind, int index, char *out, size_t outsz)
+{
+    long p = (long)ddb_word(ddb, ddb_word(ddb, 0x12 - 2 * kind) - base
+                                 + 2L * index) - base;
+
+    if (index >= ddb_count(ddb, kind)) return 0;
+    return text_at(ddb, len, p, ddb, len, base, out, outsz);
+}
+
+/* Text at XMB offset off; tokens come from the DDB. */
+static int xmb_text(const unsigned char *xmb, long xlen, long off,
+                    const unsigned char *ddb, long len, char *out,
+                    size_t outsz)
+{
+    return text_at(xmb, xlen, off, ddb, len, 0, out, outsz);
 }
 
 static int ddb_text(const unsigned char *ddb, long len, int kind, int index,
@@ -680,6 +731,54 @@ TEST(no_object_tokens_requires_auto_tokens)
     remove(tok);
 }
 
+static unsigned char xmb_buf[65536];
+
+TEST(dump_x_shares_in_xmb)
+{
+    /* Duplicate pairs: messages 7/8, sysmess 63/64 (sysmess 0-62
+       stay in the DDB under -x). */
+    static const int pair[2][3] = { { 1, 7, 8 }, { 0, 63, 64 } };
+    char root[1024], dir[512], dsf[1100], xmb[600], out0[600], out1[600];
+    char logp[600], args[3000], t0[512], t1[512];
+    long n0 = 0, n1 = 0, nx = 0;
+    int k;
+
+    CHECK(getcwd(root, sizeof root) != NULL);
+    scratch_path(dir, sizeof dir, "ndrc_xmb");
+    make_dir(dir);
+    snprintf(dsf, sizeof dsf, "%s/%s", root, OBJSHARE);
+    snprintf(xmb, sizeof xmb, "%s/0.XMB", dir);
+    snprintf(out0, sizeof out0, "%s/x_ctl.ddb", dir);
+    snprintf(out1, sizeof out1, "%s/x_auto.ddb", dir);
+    snprintf(logp, sizeof logp, "%s/x_log.txt", dir);
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\"", dsf, out0);
+    CHECK_INT(run_ndrc_in(dir, root, args, logp), 0);
+    remove(xmb);
+    snprintf(args, sizeof args,
+             "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens -x -v", dsf, out1);
+    CHECK_INT(run_ndrc_in(dir, root, args, logp), 0);
+    CHECK(log_contains(logp, "File check: skipped "));
+    CHECK(read_ddb(out0, ddb_ctl, sizeof ddb_ctl, &n0) != NULL);
+    CHECK(read_ddb(out1, ddb_auto, sizeof ddb_auto, &n1) != NULL);
+    CHECK(read_ddb(xmb, xmb_buf, sizeof xmb_buf, &nx) != NULL);
+    if (n0 == 0 || n1 == 0 || nx == 0) return;
+
+    for (k = 0; k < 2; k++) {
+        int kind = pair[k][0];
+        unsigned w = ddb_lookup_word(ddb_auto, kind, pair[k][1]);
+        CHECK_INT(ddb_lookup_word(ddb_auto, kind, pair[k][2]), w);
+        CHECK((long)w < nx);
+        t0[0] = t1[0] = '\0';
+        CHECK(ddb_text(ddb_ctl, n0, kind, pair[k][1], t0, sizeof t0));
+        CHECK(xmb_text(xmb_buf, nx, (long)w, ddb_auto, n1, t1, sizeof t1));
+        CHECK_STR(t1, t0);
+        CHECK(ddb_text(ddb_ctl, n0, kind, pair[k][2], t0, sizeof t0));
+        CHECK_STR(t1, t0);
+    }
+    remove(xmb);
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
@@ -696,5 +795,6 @@ int main(void)
     RUN(no_object_tokens_keeps_objects_plain);
     RUN(no_object_tokens_tee_reloads_identically);
     RUN(no_object_tokens_requires_auto_tokens);
+    RUN(dump_x_shares_in_xmb);
     return test_summary("autotok");
 }

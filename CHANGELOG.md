@@ -15,6 +15,13 @@
   `-auto-tokens` or a marked `.tok`, for interpreters the object-text
   compression was not verified on; sharing stays on. A `--tok` tee
   records it as `"objects": false`.
+- On targets other than NEXTDAAD, object texts keep their first word,
+  the spaces after it and every `.` uncompressed (a text with no space
+  stays uncompressed), because the original interpreters strip the
+  article by scanning stored bytes for the first space.
+- Under `-auto-tokens` and a marked `.tok` the token table is emitted
+  most-referenced first, so interpreters scanning the table find common
+  tokens sooner. Format unchanged.
 - The compiler verifies the emitted DDB by decoding every text through
   its lookup table before writing it.
 - The DDB stays format-identical and decodes on every DAAD
