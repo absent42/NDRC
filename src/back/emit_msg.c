@@ -27,7 +27,7 @@
 
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
                     int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
-                    int share, ShareStats *stats)
+                    int share, int raw, ShareStats *stats)
 {
     size_t n = vec_len_Message(msgs);
     long *offsets = n ? arena_alloc(str_arena(out), n * sizeof(long)) : NULL;
@@ -56,7 +56,7 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
                 offsets[i] = offsets[j];
                 if (stats) {
                     stats->texts++;
-                    stats->bytes += (long)len + 1;
+                    stats->bytes += (long)len + (raw ? 0 : 1);
                 }
                 continue;
             }
@@ -75,22 +75,26 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
             bytes = str_bytes(m->Text);
             len = str_len(m->Text);
             for (j = 0; j < len; j++) {
-                fputc((int)(bytes[j] ^ OFUSCATE_VALUE), xmb);
+                fputc((int)(raw ? bytes[j] : bytes[j] ^ OFUSCATE_VALUE), xmb);
                 (*xmb_addr)++;
             }
-            fputc((int)(0x0Au ^ OFUSCATE_VALUE), xmb);   /* mark of end of string */
-            (*xmb_addr)++;
+            if (!raw) {
+                fputc((int)(0x0Au ^ OFUSCATE_VALUE), xmb);   /* mark of end of string */
+                (*xmb_addr)++;
+            }
         } else {
             offsets[i] = *addr;
 
             bytes = str_bytes(m->Text);
             len = str_len(m->Text);
             for (j = 0; j < len; j++) {
-                str_push_u8(out, bytes[j] ^ OFUSCATE_VALUE);
+                str_push_u8(out, raw ? bytes[j] : bytes[j] ^ OFUSCATE_VALUE);
                 (*addr)++;
             }
-            str_push_u8(out, 0x0Au ^ OFUSCATE_VALUE);   /* mark of end of string */
-            (*addr)++;
+            if (!raw) {
+                str_push_u8(out, 0x0Au ^ OFUSCATE_VALUE);   /* mark of end of string */
+                (*addr)++;
+            }
         }
     }
 

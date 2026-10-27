@@ -103,6 +103,12 @@ static int drb_match_option(Arena *a, BackendOptions *opts, const char *raw_arg)
         opts->no_object_tokens = 1;
         return 1;
     }
+    /* Text format 2 selects per game; refusals in backend_run. */
+    if (strcmp(raw_arg, "-nxtext") == 0) {
+        opts->nxtext = 1;
+        opts->auto_tokens = 1;
+        return 1;
+    }
     if (strcmp(raw_arg, "--tok") == 0 ||
         strncmp(raw_arg, "--tok=", 6) == 0) {
         opts->tok_tee = 1;

@@ -34,10 +34,12 @@ void emit_header(Str *out, long *addr, const Target *t, const Adventure *adv, in
 }
 
 void emit_header_patch(Str *out, const Target *t, const Adventure *adv,
-                        const long offsets[NDRC_HEADER_PATCH_WORDS])
+                        const long offsets[NDRC_HEADER_PATCH_WORDS], int text2)
 {
     size_t i;
 
+    /* Not in DRC: version bit 7 declares NextDAAD text format 2. */
+    if (text2) str_set_u8(out, 0, (adv->v3code ? 3u : 2u) | 0x80u);
     for (i = 0; i < NDRC_HEADER_PATCH_WORDS; i++) {
         str_set_u16(out, 8 + 2 * i, (unsigned)offsets[i], t->big_endian);
     }

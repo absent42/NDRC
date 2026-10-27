@@ -25,6 +25,7 @@
 #include "model.h"
 #include "str.h"
 #include "targets.h"
+#include "text2.h"
 #include "tokens.h"
 #include "tokselect.h"
 #include "vec.h"
@@ -121,6 +122,125 @@ static void report_share(int verbose, const ShareStats *s, const char *table,
     *savings += s->bytes;
 }
 
+/* Expands entry k one level into dec (byte 0 is its length). */
+static void text2_expand(Str *dec, const Vec_Str *entries, size_t k, int depth)
+{
+    const Str *e = vec_at_Str(entries, k);
+    size_t i;
+
+    for (i = 1; i < str_len(e); i++) {
+        unsigned b = str_bytes(e)[i];
+        if (b >= 128 && depth == 0 && b - 128 < vec_len_Str(entries))
+            text2_expand(dec, entries, b - 128, 1);
+        else str_push_u8(dec, b >= 128 ? 0xFFu : b);  /* 0xFF never matches */
+    }
+}
+
+/* Decodes coded stream c to its text; 0 on overrun, bad token or
+   trailing bytes. Adds the bits and symbols read (EOM included). */
+static int text2_decodes_to(Arena *a, const Text2Result *r, const Str *c,
+                            const Str *want, long *bits, long *syms)
+{
+    Str *dec = str_new(a);
+    size_t pos = 0;
+
+    for (;;) {
+        int sym = huff_decode_one(r->lengths, r->nsym, str_bytes(c),
+                                  str_len(c), &pos);
+        if (sym < 0) return 0;
+        (*syms)++;
+        if (sym == 10) break;
+        if (sym < 128) str_push_u8(dec, (unsigned)sym);
+        else if ((size_t)sym - 128 >= vec_len_Str(r->entries)) return 0;
+        else text2_expand(dec, r->entries, (size_t)sym - 128, 0);
+    }
+    *bits += (long)pos;
+    return (pos + 7) / 8 == str_len(c) && str_len(dec) == str_len(want) &&
+           memcmp(str_bytes(dec), str_bytes(want), str_len(want)) == 0;
+}
+
+static long table_bytes(const Vec_Message *m)
+{
+    long n = 0;
+    size_t i;
+    for (i = 0; m != NULL && i < vec_len_Message(m); i++)
+        n += (long)str_len(vec_at_Message(m, i)->Text) + 1;
+    return n;
+}
+
+/* -nxtext: codes the snapshot `pre` (format 1 already compressed into
+   adv) and keeps format 2 only when its texts + block + XMB are
+   smaller. Writes the XMB either way. On format 2 fills coded[] (tables
+   in snapshot slot order), *block and *savings. -1 after a fatal. */
+static int nxtext_select(Arena *a, Diag *d, const Target *target,
+                         Adventure *adv, const Vec_MsgTable *pre,
+                         const Vec_Str *final_tokens, int verbose,
+                         Vec_Message *coded[TOKSEL_TABLES], Str **block,
+                         long *savings)
+{
+    Vec_Str *corpus = vec_new_Str(a), *xcoded = vec_new_Str(a);
+    Vec_Message *xraw = vec_at_MsgTable(pre, 3);
+    Text2Result *r;
+    long f1 = 0, f2, original = 0, bits = 0, syms = 0;
+    size_t t, k, idx = 0;
+
+    for (t = 0; t < TOKSEL_TABLES; t++) {
+        const Vec_Message *m = vec_at_MsgTable(pre, t);
+        for (k = 0; k < vec_len_Message(m); k++)
+            vec_push_Str(corpus, vec_at_Message(m, k)->Text);
+        original += table_bytes(m);
+    }
+    r = text2_build(a, d, corpus);
+    if (r == NULL) return -1;
+
+    f1 = table_bytes(adv->locations) + table_bytes(adv->messages) +
+         table_bytes(adv->sysmess) + table_bytes(adv->objects) +
+         table_bytes(xraw);
+    for (k = 0; k < vec_len_Str(final_tokens); k++)
+        f1 += (long)str_len(vec_at_Str(final_tokens, k));
+    if (vec_len_Str(final_tokens) == 0) f1++;
+    f2 = r->text_bytes + r->block_bytes + (vec_len_Message(xraw) ? 4 : 0);
+
+    if (vec_len_Str(r->entries) == 0 || f2 >= f1) {
+        printf("Text format 2 not smaller; format 1 emitted.\n");
+        /* tokselect_compress encoded adv's xmessages; the XMB is raw. */
+        adv->xmessages = xraw;
+        if (vec_len_Message(xraw) && !emit_xmessages(d, target, adv))
+            return -1;
+        return 0;
+    }
+
+    for (t = 0; t < TOKSEL_TABLES; t++) {
+        const Vec_Message *m = vec_at_MsgTable(pre, t);
+        coded[t] = vec_new_Message(a);
+        for (k = 0; k < vec_len_Message(m); k++, idx++) {
+            Message *cm = arena_calloc(a, sizeof(*cm));
+            cm->Text = vec_at_Str(r->coded, idx);
+            if (!text2_decodes_to(a, r, cm->Text, vec_at_Message(m, k)->Text,
+                                  &bits, &syms)) {
+                diag_fatal(d, "Text format 2 self-check failed: coded text "
+                              "%lu does not decode back to source",
+                           (unsigned long)idx);
+                return -1;
+            }
+            vec_push_Message(coded[t], cm);
+            if (t == 3) vec_push_Str(xcoded, cm->Text);
+        }
+    }
+    *block = text2_block(a, r);
+    if (vec_len_Str(xcoded) &&
+        !emit_xmessages2(d, target, adv, xcoded,
+                         (unsigned)str_bytes(*block)[5] |
+                         ((unsigned)str_bytes(*block)[6] << 8)))
+        return -1;
+    if (verbose)
+        printf("Text format 2: %u tokens, %.2f bits per symbol, %ld text bytes.\n",
+               (unsigned)vec_len_Str(r->entries),
+               syms ? (double)bits / (double)syms : 0.0, r->text_bytes);
+    *savings = original - r->text_bytes;
+    return 1;
+}
+
 /* PORT: drb.php:804-812 checkMaluva / drb.php:814-817 MaluvaEmbedded,
    restated here for the drb.php:1922 call site (emit_proc.c keeps its
    own copies for its per-condact guards; not shared - both are file-
@@ -207,6 +327,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     Vec_MsgTable *pre_texts = NULL;
     Vec_Str *final_tokens = NULL;
     int compress_objects, share_texts;
+    int text2 = 0;                       /* -nxtext chose format 2 */
+    Vec_Message *t2_tabs[TOKSEL_TABLES] = { NULL };
+    Str *t2_block = NULL;
     ShareStats otx_share = { 0, 0 }, stx_share = { 0, 0 };
     ShareStats mtx_share = { 0, 0 }, ltx_share = { 0, 0 };
     long addr;
@@ -366,6 +489,17 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     if (strcmp(target->name, "ZX") != 0 && opts->prepend_plus3) {
         diag_fatal(d, "Adding +3DOS header was requested but target is not ZX Spectrum");
         return diag_exit_code(d);
+    }
+    if (opts->nxtext) {
+        const char *bad = NULL;
+        if (strcmp(target->name, "NEXTDAAD") != 0)
+            bad = "-nxtext requires the NEXTDAAD target";
+        else if (opts->dump_to_xmb) bad = "-X is not available with -nxtext";
+        else if (opts->tok_tee) bad = "--tok is not available with -nxtext";
+        if (bad != NULL) {
+            diag_fatal(d, "%s", bad);
+            return diag_exit_code(d);
+        }
     }
 
     /* PORT: model_from_json runs DRB's replaceEscapeChars/checkStrings
@@ -540,7 +674,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
            target - drb.php:422/426, read inside generateXMessages
            (drb.php:454) before its own per-target switch (drb.php:
            427-446) runs. */
-        {
+        /* -nxtext writes the XMB once, after coding (nxtext_select). */
+        if (!opts->nxtext) {
             Target xmb_target = *target;
             if (opts->dump_to_xmb) xmb_target.xmessage_size_k = 64;
             if (!emit_xmessages(d, &xmb_target, adv)) return diag_exit_code(d);
@@ -597,6 +732,12 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
         }
         if (opts->verbose && compress_objects)
             printf("Object texts compressed.\n");
+        if (opts->nxtext) {
+            text2 = nxtext_select(a, d, target, adv, pre_texts, final_tokens,
+                                  opts->verbose, t2_tabs, &t2_block,
+                                  &text_savings);
+            if (text2 < 0) return diag_exit_code(d);
+        }
     }
 
     /* PORT: drb.php:1940-1945 generateOTX, backed by emit_messages -
@@ -605,8 +746,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        so the -x flag can find them (see the PHP comment there). xmb_fh/
        &xmb_addr are threaded through regardless (unused down that
        branch when the dump flag passed here is 0). */
-    emit_messages(out, &addr, target, adv->objects, 0, 0, xmb_fh, &xmb_addr,
-                  share_texts, &otx_share);
+    emit_messages(out, &addr, target, text2 ? t2_tabs[4] : adv->objects, 0, 0,
+                  xmb_fh, &xmb_addr, share_texts, text2, &otx_share);
     report_share(opts->verbose, &otx_share, "objects", &text_savings);
     /* PORT: drb.php:1942 - the object_data-not-objects quirk (S12/
        S6.6): the lookup table is 2 bytes per OBJECT_DATA entry, not
@@ -631,8 +772,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        port. */
     object_weight_attr_offset = addr;
     emit_object_weight_attr(out, &addr, d, adv,
-                            compress_objects ? vec_at_MsgTable(pre_texts, 4)
-                                             : adv->objects);
+                            compress_objects || text2
+                                ? vec_at_MsgTable(pre_texts, 4)
+                                : adv->objects);
     layout_pad(out, &addr, target);
     objweight_size = addr - previous_address;
     previous_address = addr;
@@ -672,13 +814,19 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        map line prints BEFORE the token warnings tokens_compress emits
        internally via diag_verbose - matching the measured reference
        transcript's order exactly. */
-    compressed_text_offset = ts->has_tokens ? addr : 0;
+    compressed_text_offset = ts->has_tokens || text2 ? addr : 0;
     print_map_line(opts->verbose, "Tokens            ", compressed_text_offset);
     if (!ts->optimal_encode) {
         final_tokens = tokens_compress(a, d, adv, ts, classic, &text_savings);
         if (final_tokens == NULL) return diag_exit_code(d);
     }
-    tokens_emit(out, final_tokens, &addr);
+    if (text2) {
+        /* Format 2: the text block stands in for the token table. */
+        str_append_n(out, str_bytes(t2_block), str_len(t2_block));
+        addr += (long)str_len(t2_block);
+    } else {
+        tokens_emit(out, final_tokens, &addr);
+    }
     layout_pad(out, &addr, target);
     token_size = addr - previous_address;
     previous_address = addr;
@@ -687,8 +835,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        is_stx=1 marks the sysmess call (drb.php:532's LAST_DEFAULT_
        SYSMESS special case); dump_to_xmb is this task's own local flag,
        matching drb.php:1999's $adventure->dumpToXMB read. */
-    emit_messages(out, &addr, target, adv->sysmess, opts->dump_to_xmb, 1, xmb_fh, &xmb_addr,
-                  share_texts, &stx_share);
+    emit_messages(out, &addr, target, text2 ? t2_tabs[2] : adv->sysmess,
+                  opts->dump_to_xmb, 1, xmb_fh, &xmb_addr,
+                  share_texts, text2, &stx_share);
     report_share(opts->verbose, &stx_share, "sysmess", &text_savings);
     sysmess_lookup_offset = addr - 2 * (long)vec_len_Message(adv->sysmess);
     print_map_line(opts->verbose, "Sysmess           ", sysmess_lookup_offset);
@@ -697,8 +846,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     previous_address = addr;
 
     /* PORT: drb.php:2006-2012 generateMTX. */
-    emit_messages(out, &addr, target, adv->messages, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
-                  share_texts, &mtx_share);
+    emit_messages(out, &addr, target, text2 ? t2_tabs[1] : adv->messages,
+                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
+                  share_texts, text2, &mtx_share);
     report_share(opts->verbose, &mtx_share, "messages", &text_savings);
     message_lookup_offset = addr - 2 * (long)vec_len_Message(adv->messages);
     print_map_line(opts->verbose, "Messages          ", message_lookup_offset);
@@ -707,8 +857,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     previous_address = addr;
 
     /* PORT: drb.php:2015-2021 generateLTX. */
-    emit_messages(out, &addr, target, adv->locations, opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
-                  share_texts, &ltx_share);
+    emit_messages(out, &addr, target, text2 ? t2_tabs[0] : adv->locations,
+                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
+                  share_texts, text2, &ltx_share);
     report_share(opts->verbose, &ltx_share, "locations", &text_savings);
     location_lookup_offset = addr - 2 * (long)vec_len_Message(adv->locations);
     print_map_line(opts->verbose, "Locations         ", location_lookup_offset);
@@ -719,7 +870,11 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     /* Not in DRC: decodes the emitted texts through their lookups, which
        tokselect_verify cannot see (sharing happens at emission). -X
        dumps sysmess past 62 and every message and location (emit_msg.c). */
-    if (ts->optimal_encode) {
+    if (text2) {
+        if (opts->verbose)
+            printf("File check: format 2 (checked by the text2 decoder "
+                   "in a later task).\n");
+    } else if (ts->optimal_encode) {
         size_t nobj = vec_len_Message(adv->objects);
         size_t nsys = vec_len_Message(adv->sysmess);
         size_t nmsg = vec_len_Message(adv->messages);
@@ -811,7 +966,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
         && adv->xmessage_size != 0) {
         offsets[12] = adv->xmessage_size;
     }
-    emit_header_patch(out, target, adv, offsets);
+    emit_header_patch(out, target, adv, offsets, text2);
 
     /* PORT: drb.php:2074-2075 - fclose($outputFileHandler) then
        fclose($XMBFileHandler), right after the header patch pass. This

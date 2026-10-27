@@ -119,6 +119,7 @@ Case-insensitive (upper-cased before matching), dash-prefixed.
 | `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Encodes text with an optimal parse (smaller output than the sequential encoder); output DDBs remain format-identical and decode on every DAAD interpreter. Also compresses object texts and emits each duplicate text once (shared lookup entries); both stay format-identical. |
 | `--tok[=path]` | Write the selected token table as a standard `.tok` file (bare form: `<input>.tok`, where the normal override lookup finds it on the next run). Implies `-auto-tokens`. Like `--json=`, a `--tok=` argument is never claimed as the output name. |
 | `-no-object-tokens` | Keep object texts uncompressed under `-auto-tokens` or a marked `.tok`; duplicate sharing and the per-game table stay on, and under `-auto-tokens` the table is selected without object texts (a marked `.tok` keeps its table). For interpreters the object-text compression was not verified on. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Without `-auto-tokens` or a marked `.tok` it is an error (`-no-object-tokens requires -auto-tokens`, exit 2). |
+| `-nxtext` | Allow NextDAAD text format 2 (Huffman-coded text with an indexed token dictionary), emitted only when it is smaller than the format 1 build; see "Text format 2" below. Implies `-auto-tokens`. NEXTDAAD target only. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. |
 | `-srcmap=<path>` | Write a DSM v2 source map to `<path>`: one record per emitted condact, entry and process (DSF file, line, column, DDB offset), plus the `#define` symbols. Used by the NextDAAD CSpect debugger. Case-sensitive, NDRC extension. Join only: `--from-json` refuses it (`-srcmap needs a .DSF source input`, exit 2, nothing written), because source positions exist only when the front end ran in-process. The DDB is byte-identical with or without it. File paths in the map are relative to the map's own directory. An empty path is an option error. With `-np` no map is written. A map that cannot be created is an error. |
 
 An unrecognised option, in either set, stops compilation immediately
@@ -180,6 +181,49 @@ On the optimal rows (`-auto-tokens` or a marked `.tok`) the token table
 is emitted most-referenced first: interpreters scan the table from its
 first entry on every reference, so common tokens are found sooner. The
 format is unchanged.
+
+## Text format 2
+
+`-nxtext` lets the compiler emit NextDAAD text format 2, a NEXTDAAD-only
+text encoding: every text (objects, system messages, messages,
+locations and XMESSAGEs) is one canonical Huffman bit stream ending in
+its own end-of-message code, over a per-game dictionary of up to 383
+tokens, each reachable through a 2-byte index. Only a NextDAAD that
+reads format 2 can open such a DDB: the version byte carries bit 7
+(0x82, or 0x83 under `-v3`), which every other interpreter and every
+older NextDAAD refuses. The token table slot (header offset 8) points at
+the format 2 text block, which starts with the magic "H2".
+
+The compiler builds format 1 as `-auto-tokens` does and format 2 from
+the same texts, and keeps format 2 only when its total (texts, text
+block and XMB) is smaller. Otherwise it emits the format 1 build
+unchanged and prints, with or without `-v`:
+
+    Text format 2 not smaller; format 1 emitted.
+
+Small games usually fall back: the text block costs at least 135 bytes
+before any token. Under `-v` a format 2 build prints
+`Text format 2: <n> tokens, <bits> bits per symbol, <bytes> text bytes.`
+and the "Compression Tokens" line of the size report gives the text
+block size. Format 2 texts are stored as is (no XOR) and duplicate
+texts are still emitted once.
+
+Under format 2, `0.XMB` is written after coding, with a 4-byte header:
+"X2" and the 16-bit fingerprint (CRC-16 of the text block's code
+lengths) the text block also carries, so a stale XMB is detected.
+XMESSAGE offsets count from the start of the file, so the first is 4.
+An XMESSAGE whose coded stream exceeds 8K is an error
+(`XMESSAGE <n> exceeds 8K coded`, exit 2).
+
+Refused combinations, each exit 2:
+
+- any target other than NEXTDAAD: `-nxtext requires the NEXTDAAD target`
+- `-x`: `-X is not available with -nxtext` (NextDAAD does not read
+  messages, system messages or locations from the XMB)
+- `--tok`: `--tok is not available with -nxtext` (a format 2 dictionary
+  cannot be written as a `.tok`)
+
+Without `-nxtext` every build is byte-identical to before.
 
 ### `--json[=path]`
 

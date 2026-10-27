@@ -35,8 +35,9 @@ void emit_header(Str *out, long *addr, const Target *t, const Adventure *adv, in
    target's byte order. Then extvec - which generateProcesses/USERPTR may
    have mutated since emit_header wrote its all-zero copy (drb.php:1117-
    1123, emit_proc.c) - is rewritten at offset 34 from adv->extvec's
-   current values (drb.php:2072-2073). */
+   current values (drb.php:2072-2073). text2 sets version byte bit 7
+   (0x82/0x83: NextDAAD text format 2). */
 void emit_header_patch(Str *out, const Target *t, const Adventure *adv,
-                        const long offsets[NDRC_HEADER_PATCH_WORDS]);
+                        const long offsets[NDRC_HEADER_PATCH_WORDS], int text2);
 
 #endif /* NDRC_BACK_EMIT_HDR_H */

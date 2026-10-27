@@ -28,6 +28,8 @@ typedef struct {
     int tok_tee;                /* --tok seen (implies auto_tokens) */
     int no_object_tokens;       /* -no-object-tokens: object texts stay
                                    uncompressed under the optimal encoder */
+    int nxtext;                 /* -nxtext: NextDAAD text format 2 when
+                                   smaller (implies auto_tokens) */
     const char *tok_tee_path;   /* --tok=path; NULL = derive <input>.tok */
     const char *srcmap_path;    /* -srcmap=path; NULL = no source map */
     /* The caller's option-loop verdict. drb reports

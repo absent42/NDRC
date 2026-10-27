@@ -173,3 +173,79 @@ int emit_xmessages(Diag *d, const Target *t, Adventure *adv)
 
     return 1;
 }
+
+#define XMB2_HEADER 4
+#define XMB2_MAX_CODED 8192
+
+static void xmb2_header(FILE *fh, unsigned fingerprint)
+{
+    fputc('X', fh);
+    fputc('2', fh);
+    fputc((int)(fingerprint & 0xFFu), fh);
+    fputc((int)((fingerprint >> 8) & 0xFFu), fh);
+}
+
+int emit_xmessages2(Diag *d, const Target *t, Adventure *adv,
+                    const Vec_Str *coded, unsigned fingerprint)
+{
+    long max_file_size = (long)t->xmessage_size_k * 1024;
+    long current_offset = XMB2_HEADER, current_file = 0;
+    size_t n = vec_len_Str(coded), i;
+    char filename[32];
+    FILE *fh;
+    long *offsets;
+
+    adv->xmessage_max_k = (long)t->xmessage_size_k;
+    if (max_file_size == 0) {
+        diag_fatal(d, "XMessages are not supported by target [ %s %s ]",
+                   t->name, t->subtarget ? t->subtarget : "");
+        return 0;
+    }
+    /* Checked before any file is opened. */
+    for (i = 0; i < n; i++)
+        if (str_len(vec_at_Str(coded, i)) > XMB2_MAX_CODED) {
+            diag_fatal(d, "XMESSAGE %u exceeds 8K coded", (unsigned)i);
+            return 0;
+        }
+
+    xmb_filename(filename, sizeof filename, current_file, max_file_size);
+    fh = fopen(filename, "wb");
+    if (fh == NULL) {
+        diag_fatal(d, "Can't create output XMB file");
+        return 0;
+    }
+    xmb2_header(fh, fingerprint);
+    offsets = n ? arena_alloc(vec_arena_Message(adv->xmessages),
+                              n * sizeof(long)) : NULL;
+
+    for (i = 0; i < n; i++) {
+        const Str *c = vec_at_Str(coded, i);
+        long len = (long)str_len(c);
+
+        /* The stream carries its own end code: no +1 terminator. */
+        if (len + current_offset > max_file_size) {
+            fclose(fh);
+            current_file++;
+            current_offset = XMB2_HEADER;
+            xmb_filename(filename, sizeof filename, current_file, max_file_size);
+            fh = fopen(filename, "wb");
+            if (fh == NULL) {
+                diag_fatal(d, "Can't create output XMB file");
+                return 0;
+            }
+            xmb2_header(fh, fingerprint);
+        }
+        offsets[i] = current_offset + current_file * max_file_size;
+        fwrite(str_bytes(c), 1, (size_t)len, fh);
+        current_offset += len;
+    }
+    fclose(fh);
+
+    if (current_offset > 65535) {
+        diag_fatal(d, "XMessages data exceeds 64K");
+        return 0;
+    }
+    adv->xmessage_offsets = offsets;
+    adv->xmessage_size = max_file_size * current_file + current_offset;
+    return 1;
+}

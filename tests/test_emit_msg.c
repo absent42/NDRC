@@ -42,7 +42,7 @@ TEST(share_off_is_byte_identical)
     long addr = 0;
 
     CHECK(t != NULL);
-    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 0, NULL);
+    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 0, 0, NULL);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -64,7 +64,7 @@ TEST(share_on_repeats_lookup_word)
     ShareStats stats = { 0, 0 };
     long addr = 0, addr2 = 0;
 
-    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 1, &stats);
+    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 1, 0, &stats);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -73,7 +73,7 @@ TEST(share_on_repeats_lookup_word)
     CHECK_INT(stats.bytes, 2);
 
     /* NULL stats: same bytes. */
-    emit_messages(out2, &addr2, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 1, NULL);
+    emit_messages(out2, &addr2, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 1, 0, NULL);
     CHECK_INT(str_len(out2), sizeof(want));
     CHECK_MEM(str_bytes(out2), want, sizeof(want));
     arena_free(a);
@@ -91,7 +91,7 @@ TEST(share_first_occurrence_keeps_copy)
     ShareStats stats = { 0, 0 };
     long addr = 0;
 
-    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, 1, &stats);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, 1, 0, &stats);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -112,7 +112,7 @@ TEST(share_empty_texts)
     ShareStats stats = { 0, 0 };
     long addr = 0;
 
-    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 2), 0, 0, NULL, NULL, 1, &stats);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 2), 0, 0, NULL, NULL, 1, 0, &stats);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -151,7 +151,7 @@ TEST(share_never_crosses_destinations)
         arena_free(a);
         return;
     }
-    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 65), 1, 1, xmb, &xmb_addr, 1, &stats);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 65), 1, 1, xmb, &xmb_addr, 1, 0, &stats);
 
     /* 63 RAM texts of 4 bytes, then 65 words. */
     CHECK_INT(str_len(out), 63 * 4 + 65 * 2);

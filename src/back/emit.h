@@ -51,18 +51,28 @@ int emit_externs(Str *out, long *addr, Diag *d, Adventure *adv, const Target *t)
    which hard-codes 0 (main.c).
    share: a text equal to an earlier one in the same call and destination
    reuses its offset and writes nothing. stats (nullable) accumulates
-   texts shared and bytes not written (text + terminator). */
+   texts shared and bytes not written (text + terminator).
+   raw: bytes go out as is with no 0x0A terminator (text format 2
+   streams carry their own end code and padding). */
 typedef struct { long texts; long bytes; } ShareStats;
 
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
                     int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
-                    int share, ShareStats *stats);
+                    int share, int raw, ShareStats *stats);
 
 /* PORT: generateXMessages drb.php:449-524. Writes the XMB file(s) into
    the current working directory and fills adv->xmessage_offsets/size/
    padding/max_k. Returns 0 after reporting via diag_fatal (unsupported
    target, 64K overflow), 1 otherwise. */
 int emit_xmessages(Diag *d, const Target *t, Adventure *adv);
+
+/* Not in DRC: text format 2 XMB. coded[i] is xmessage i's coded stream,
+   written raw after a 4-byte "X2" + fingerprint (u16 LE) header per
+   file; offsets count from the file start. Same roll-over and 64K rules
+   as emit_xmessages; a stream over 8K is fatal. Returns 0 after
+   diag_fatal. */
+int emit_xmessages2(Diag *d, const Target *t, Adventure *adv,
+                    const Vec_Str *coded, unsigned fingerprint);
 
 /* PORT: drb.php:716-724 generateObjectNames. */
 void emit_object_names(Str *out, long *addr, const Adventure *adv);
