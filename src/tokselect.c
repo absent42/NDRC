@@ -620,6 +620,87 @@ int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
     return ok;
 }
 
+/* DP-encodes every compressable text through tokens. counts != NULL:
+   count references per entry only, texts untouched; else rewrite them. */
+static void encode_texts(Arena *a, const Adventure *adv,
+                         const Vec_Str *tokens, int with_objects,
+                         int classic_objects, long *counts,
+                         long *original, long *encoded)
+{
+    TokIndex ix;
+    long *dp;
+    Str **choice;
+    const Vec_Message *tabs[TOKSEL_TABLES];
+    size_t maxlen = 0, t, k;
+
+    tokindex_build(a, &ix, tokens);
+    compressable_tables(adv, with_objects, tabs);
+    for (t = 0; t < TOKSEL_TABLES; t++) {
+        if (tabs[t] == NULL) continue;
+        for (k = 0; k < vec_len_Message(tabs[t]); k++)
+            if (str_len(vec_at_Message(tabs[t], k)->Text) > maxlen)
+                maxlen = str_len(vec_at_Message(tabs[t], k)->Text);
+    }
+    dp = arena_alloc(a, (maxlen + 1) * sizeof(*dp));
+    choice = arena_alloc(a, (maxlen + 1) * sizeof(*choice));
+
+    for (t = 0; t < TOKSEL_TABLES; t++) {
+        if (tabs[t] == NULL) continue;
+        for (k = 0; k < vec_len_Message(tabs[t]); k++) {
+            Message *m = vec_at_Message(tabs[t], k);
+            const unsigned char *s = str_bytes(m->Text);
+            size_t n = str_len(m->Text), pos;
+            int obj_rule = t == 4 && classic_objects;
+            long prot = obj_rule ? (long)tokselect_protected_prefix(s, n)
+                                 : 0;
+            Str *enc = counts != NULL ? NULL : str_new(a);
+            long ii;
+
+            if (counts == NULL) *original += (long)n;
+            dp[n] = 0;
+            choice[n] = NULL;
+            for (ii = (long)n - 1; ii >= 0; ii--) {
+                long best = dp[ii + 1] + 1;
+                Str *pick = NULL;   /* ties keep the literal */
+                const Vec_Str *bucket = ii < prot ? NULL
+                                                  : ix.by_first[s[ii]];
+                size_t bj;
+                for (bj = 0; bucket != NULL &&
+                             bj < vec_len_Str(bucket); bj++) {
+                    Str *tok = vec_at_Str(bucket, bj);
+                    size_t tl = str_len(tok);
+                    if (obj_rule && token_has_dot(tok)) continue;
+                    if (tl <= n - (size_t)ii &&
+                        memcmp(s + ii, str_bytes(tok), tl) == 0) {
+                        long v = dp[ii + (long)tl] + 1;
+                        if (v < best) { best = v; pick = tok; }
+                    }
+                }
+                dp[ii] = best;
+                choice[ii] = pick;
+            }
+            for (pos = 0; pos < n; ) {
+                Str *tok = choice[pos];
+                if (tok == NULL) {
+                    if (enc != NULL) str_push(enc, (char)s[pos]);
+                    pos++;
+                } else {
+                    size_t j2;
+                    for (j2 = 0; j2 < vec_len_Str(tokens); j2++)
+                        if (vec_at_Str(tokens, j2) == tok) break;
+                    if (enc != NULL) str_push_u8(enc, (unsigned)(j2 + 127));
+                    else counts[j2]++;
+                    pos += str_len(tok);
+                }
+            }
+            if (enc != NULL) {
+                *encoded += (long)str_len(enc);
+                m->Text = enc;
+            }
+        }
+    }
+}
+
 Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                             TokenSet *ts, int classic_mode, int with_objects,
                             int classic_objects, long *savings)
@@ -667,6 +748,28 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
     diag_verbose(d, "Compression tokens used: %zu.",
                  vec_len_Str(final_tokens));
 
+    /* Interpreters scan the table from entry 0 per reference: most
+       referenced first, stable insertion sort (ties keep selection order). */
+    {
+        size_t n = vec_len_Str(final_tokens);
+        long *counts = arena_calloc(a, (n + 1) * sizeof(*counts));
+        encode_texts(a, adv, final_tokens, with_objects, classic_objects,
+                     counts, &original, &encoded);
+        for (i = 2; i < n; i++) {
+            Str *kt = vec_at_Str(final_tokens, i);
+            long kc = counts[i];
+            size_t j = i;
+            while (j > 1 && counts[j - 1] < kc) {
+                vec_set_Str(final_tokens, j, vec_at_Str(final_tokens, j - 1));
+                counts[j] = counts[j - 1];
+                j--;
+            }
+            vec_set_Str(final_tokens, j, kt);
+            counts[j] = kc;
+        }
+        diag_verbose(d, "Token table ordered by use.");
+    }
+
     if (classic_mode) {
         Str *space = str_new(a);
         str_push(space, ' ');
@@ -676,74 +779,8 @@ Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                         "classic mode compatibility.");
     }
 
-    {
-        TokIndex ix;
-        long *dp;
-        Str **choice;
-        const Vec_Message *tabs[TOKSEL_TABLES];
-        size_t maxlen = 0, t, k;
-
-        tokindex_build(a, &ix, final_tokens);
-        for (i = 0; i < vec_len_Str(strings); i++)
-            if (str_len(vec_at_Str(strings, i)) > maxlen)
-                maxlen = str_len(vec_at_Str(strings, i));
-        dp = arena_alloc(a, (maxlen + 1) * sizeof(*dp));
-        choice = arena_alloc(a, (maxlen + 1) * sizeof(*choice));
-
-        compressable_tables(adv, with_objects, tabs);
-        for (t = 0; t < TOKSEL_TABLES; t++) {
-            if (tabs[t] == NULL) continue;
-            for (k = 0; k < vec_len_Message(tabs[t]); k++) {
-                Message *m = vec_at_Message(tabs[t], k);
-                const unsigned char *s = str_bytes(m->Text);
-                size_t n = str_len(m->Text), pos;
-                int obj_rule = t == 4 && classic_objects;
-                long prot = obj_rule ? (long)tokselect_protected_prefix(s, n)
-                                     : 0;
-                Str *enc = str_new(a);
-                long ii;
-
-                original += (long)n;
-                dp[n] = 0;
-                choice[n] = NULL;
-                for (ii = (long)n - 1; ii >= 0; ii--) {
-                    long best = dp[ii + 1] + 1;
-                    Str *pick = NULL;   /* ties keep the literal */
-                    const Vec_Str *bucket = ii < prot ? NULL
-                                                      : ix.by_first[s[ii]];
-                    size_t bj;
-                    for (bj = 0; bucket != NULL &&
-                                 bj < vec_len_Str(bucket); bj++) {
-                        Str *tok = vec_at_Str(bucket, bj);
-                        size_t tl = str_len(tok);
-                        if (obj_rule && token_has_dot(tok)) continue;
-                        if (tl <= n - (size_t)ii &&
-                            memcmp(s + ii, str_bytes(tok), tl) == 0) {
-                            long v = dp[ii + (long)tl] + 1;
-                            if (v < best) { best = v; pick = tok; }
-                        }
-                    }
-                    dp[ii] = best;
-                    choice[ii] = pick;
-                }
-                for (pos = 0; pos < n; ) {
-                    Str *tok = choice[pos];
-                    if (tok == NULL) {
-                        str_push(enc, (char)s[pos]);
-                        pos++;
-                    } else {
-                        size_t j2;
-                        for (j2 = 0; j2 < vec_len_Str(final_tokens); j2++)
-                            if (vec_at_Str(final_tokens, j2) == tok) break;
-                        str_push_u8(enc, (unsigned)(j2 + 127));
-                        pos += str_len(tok);
-                    }
-                }
-                encoded += (long)str_len(enc);
-                m->Text = enc;
-            }
-        }
-    }
+    encode_texts(a, adv, final_tokens, with_objects, classic_objects, NULL,
+                 &original, &encoded);
     *savings = original - encoded;
     return final_tokens;
 }

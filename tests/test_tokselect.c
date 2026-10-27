@@ -551,6 +551,41 @@ TEST(compress_classic_padding)
     arena_free(a);
 }
 
+TEST(compress_orders_table_by_use)
+{
+    /* QQQ selected first but used twice; ZZZ used five times must
+       become entry 1 and encode as 0x80. */
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    Adventure *adv = adv_new(a);
+    TokenSet *ts = ts_new(a, "QQQ", "ZZZ");
+    Vec_MsgTable *before;
+    Vec_Str *final_tokens;
+    long savings = 0;
+    Str *enc;
+    static const unsigned char want_z[9] =
+        { 0x80, 'x', 0x80, 'x', 0x80, 'x', 0x80, 'x', 0x80 };
+    static const unsigned char want_q[3] = { 0x81, 'x', 0x81 };
+
+    add_msg(a, adv->messages, "ZZZxZZZxZZZxZZZxZZZ");
+    add_msg(a, adv->messages, "QQQxQQQ");
+    before = tokselect_snapshot(a, adv, 0);
+    final_tokens = tokselect_compress(a, d, adv, ts, 0, 0, 0, &savings);
+
+    CHECK(final_tokens != NULL);
+    CHECK_INT((long)vec_len_Str(final_tokens), 3);
+    CHECK(strcmp(str_cstr(vec_at_Str(final_tokens, 1)), "ZZZ") == 0);
+    CHECK(strcmp(str_cstr(vec_at_Str(final_tokens, 2)), "QQQ") == 0);
+    enc = vec_at_Message(adv->messages, 0)->Text;
+    CHECK_INT((long)str_len(enc), 9);
+    CHECK(memcmp(str_bytes(enc), want_z, 9) == 0);
+    enc = vec_at_Message(adv->messages, 1)->Text;
+    CHECK_INT((long)str_len(enc), 3);
+    CHECK(memcmp(str_bytes(enc), want_q, 3) == 0);
+    CHECK_INT(tokselect_verify(before, adv, final_tokens, 0), 1);
+    arena_free(a);
+}
+
 TEST(compress_guard_trips_past_128_tokens)
 {
     /* 135 independent net-positive digraphs (the cap-test corpus
@@ -1038,6 +1073,7 @@ int main(void)
     RUN(compress_cost_matches_parse_total);
     RUN(compress_prunes_unused_token);
     RUN(compress_classic_padding);
+    RUN(compress_orders_table_by_use);
     RUN(compress_guard_trips_past_128_tokens);
     RUN(select_picks_token_from_object_texts);
     RUN(select_objects_empty_is_noop);

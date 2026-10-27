@@ -412,6 +412,7 @@ TEST(verbose_reports_objects_and_shares)
     CHECK_INT(run_ndrc(args, logp), 0);
     CHECK(log_contains(logp, "Object texts compressed."));
     CHECK(log_contains(logp, "Shared 1 duplicate texts in objects ("));
+    CHECK(log_contains(logp, "Token table ordered by use."));
 }
 
 TEST(tee_written_only_after_file_check)
