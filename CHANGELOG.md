@@ -25,8 +25,11 @@
 - The compiler verifies the emitted DDB by decoding every text through
   its lookup table before writing it.
 - The DDB stays format-identical and decodes on every DAAD
-  interpreter. Compatibility verification on NextDAAD hardware and on
-  original interpreters is pending.
+  interpreter. Verified on NextDAAD hardware and, under emulation, on
+  the original ZX Spectrum 48K, Amstrad CPC, MSX1 and PCDAAD
+  interpreters with a fixture exercising compressed object texts,
+  `_` substitution, articles, More... inside lists and every shared
+  duplicate.
 
 ## v0.3.0 - 25/10/2026
 
