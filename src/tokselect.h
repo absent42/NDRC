@@ -40,6 +40,24 @@ Vec_MsgTable *tokselect_snapshot(Arena *a, const Adventure *adv,
 int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
                      const Vec_Str *final_tokens, int with_objects);
 
+typedef struct {
+    int snap_index;      /* slot in the snapshot: 0 loc, 1 msg, 2 sys, 4 obj */
+    long lookup_addr;    /* absolute address of the lookup table */
+    size_t count;        /* lookup words to follow */
+    size_t checked;      /* first `checked` entries are DDB-resident; the rest were dumped to the XMB and are skipped */
+    const char *name;    /* "objects" etc, for the fatal message */
+} DdbTableRef;
+
+/* Decodes each DDB-resident entry through its lookup word and the
+   emitted token table and compares with the snapshot. Returns 1 on
+   success; 0 with *bad_ref and *bad_index set on the first mismatch or
+   out-of-range address. *skipped = entries not checked. big_endian
+   is the target's lookup word order (ST, AMIGA). */
+int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
+                         size_t ddb_len, long base_addr, long tokens_addr,
+                         int big_endian, const DdbTableRef refs[4],
+                         int *bad_ref, size_t *bad_index, size_t *skipped);
+
 /* Test seam: total optimal-parse cost of strings under tokens
    (literal byte 1, any token reference 1). tokens NULL = no tokens. */
 long tokselect_parse_total(Arena *a, const Vec_Str *strings,

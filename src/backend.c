@@ -661,16 +661,6 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
         final_tokens = tokens_compress(a, d, adv, ts, classic, &text_savings);
         if (final_tokens == NULL) return diag_exit_code(d);
     }
-    if (ts->optimal_encode && opts->tok_tee) {
-        const char *tee = opts->tok_tee_path != NULL
-                          ? opts->tok_tee_path
-                          : replace_extension(a, opts->input_name, "tok");
-        if (!tokens_write_tok(tee, ts)) {
-            diag_fatal(d, "Can't create tokens file %s", tee);
-            return diag_exit_code(d);
-        }
-        if (opts->verbose) printf("Tokens written to %s.\n", tee);
-    }
     tokens_emit(out, final_tokens, &addr);
     layout_pad(out, &addr, target);
     token_size = addr - previous_address;
@@ -708,6 +698,53 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     layout_pad(out, &addr, target);
     ltx_size = addr - previous_address;
     previous_address = addr;
+
+    /* Not in DRC: decodes the emitted texts through their lookups, which
+       tokselect_verify cannot see (sharing happens at emission). -X
+       dumps sysmess past 62 and every message and location (emit_msg.c). */
+    if (ts->optimal_encode) {
+        size_t nobj = vec_len_Message(adv->objects);
+        size_t nsys = vec_len_Message(adv->sysmess);
+        size_t nmsg = vec_len_Message(adv->messages);
+        size_t nloc = vec_len_Message(adv->locations);
+        /* object_lookup_offset is sized by object_data (drb.php:1942);
+           the table itself holds one word per object text. */
+        long otx_table = object_lookup_offset
+            + 2 * ((long)vec_len_ObjectData(adv->object_data) - (long)nobj);
+        DdbTableRef refs[4] = {
+            { 4, otx_table, nobj, nobj, "objects" },
+            { 2, sysmess_lookup_offset, nsys,
+              opts->dump_to_xmb && nsys > 63 ? 63 : nsys, "sysmess" },
+            { 1, message_lookup_offset, nmsg,
+              opts->dump_to_xmb ? 0 : nmsg, "messages" },
+            { 0, location_lookup_offset, nloc,
+              opts->dump_to_xmb ? 0 : nloc, "locations" },
+        };
+        int bad_ref = 0;
+        size_t bad_index = 0, skipped = 0;
+        if (!tokselect_verify_ddb(pre_texts, str_bytes(out),
+                                  str_len(out), base_address,
+                                  compressed_text_offset, target->big_endian,
+                                  refs, &bad_ref, &bad_index, &skipped)) {
+            diag_fatal(d, "auto-tokens self-check failed: emitted %s text %lu "
+                          "does not decode back to source",
+                       refs[bad_ref].name, (unsigned long)bad_index);
+            return diag_exit_code(d);
+        }
+        if (opts->verbose && skipped > 0)
+            printf("File check: skipped %lu XMB-dumped texts.\n",
+                   (unsigned long)skipped);
+    }
+    if (ts->optimal_encode && opts->tok_tee) {
+        const char *tee = opts->tok_tee_path != NULL
+                          ? opts->tok_tee_path
+                          : replace_extension(a, opts->input_name, "tok");
+        if (!tokens_write_tok(tee, ts)) {
+            diag_fatal(d, "Can't create tokens file %s", tee);
+            return diag_exit_code(d);
+        }
+        if (opts->verbose) printf("Tokens written to %s.\n", tee);
+    }
 
     /* PORT: drb.php:2023-2028 generateConnections. emit_connections
        runs its own trailing pad internally (emit_con.c PORT NOTE), so

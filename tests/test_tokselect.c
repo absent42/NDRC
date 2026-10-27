@@ -692,6 +692,196 @@ TEST(select_is_deterministic_with_objects)
     arena_free(a);
 }
 
+/* Snapshot with up to two object texts (slot 4); other slots empty. */
+static Vec_MsgTable *obj_snap(Arena *a, const char *t0, const char *t1)
+{
+    Adventure *adv = adv_new(a);
+    if (t0 != NULL) add_msg(a, adv->objects, t0);
+    if (t1 != NULL) add_msg(a, adv->objects, t1);
+    return tokselect_snapshot(a, adv, 1);
+}
+
+/* refs[0] = objects at lookup; the other three are empty tables. */
+static void obj_refs(DdbTableRef refs[4], long lookup, size_t count,
+                     size_t checked)
+{
+    static const int slots[4] = { 4, 2, 1, 0 };
+    static const char *names[4] = { "objects", "sysmess", "messages",
+                                    "locations" };
+    int i;
+    for (i = 0; i < 4; i++) {
+        refs[i].snap_index = slots[i];
+        refs[i].lookup_addr = 0;
+        refs[i].count = refs[i].checked = 0;
+        refs[i].name = names[i];
+    }
+    refs[0].lookup_addr = lookup;
+    refs[0].count = count;
+    refs[0].checked = checked;
+}
+
+/* Token table [80][41 C2] at 0 (entry 1 = "AB"), text 0x80 0x0A at 10
+   (stored XOR 0xFF), little-endian lookup words from 20. Returns len. */
+static size_t ddb_build(unsigned char *b, const unsigned *words, size_t n)
+{
+    size_t i;
+    memset(b, 0, 64);
+    b[0] = 0x80; b[1] = 0x41; b[2] = 0xC2;
+    b[10] = 0x80 ^ 0xFF; b[11] = 0x0A ^ 0xFF;
+    for (i = 0; i < n; i++) {
+        b[20 + 2 * i] = (unsigned char)(words[i] & 0xFF);
+        b[21 + 2 * i] = (unsigned char)(words[i] >> 8);
+    }
+    return 20 + 2 * n;
+}
+
+TEST(verify_ddb_decodes_through_lookup)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[1] = { 10 };
+    size_t len = ddb_build(b, w, 1), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 20, 1, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", NULL), b, len, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 1);
+    CHECK_INT((long)skipped, 0);
+    arena_free(a);
+}
+
+TEST(verify_ddb_detects_mismatch)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[1] = { 10 };
+    size_t len = ddb_build(b, w, 1), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 20, 1, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AC", NULL), b, len, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 0);
+    CHECK_INT(bad_ref, 0);
+    CHECK_INT((long)bad_index, 0);
+    arena_free(a);
+}
+
+TEST(verify_ddb_shared_words)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[2] = { 10, 10 };
+    size_t len = ddb_build(b, w, 2), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 20, 2, 2);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", "AB"), b, len, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 1);
+    arena_free(a);
+}
+
+TEST(verify_ddb_empty_table)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    size_t len = ddb_build(b, NULL, 0), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 20, 0, 0);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, NULL, NULL), b, len, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 1);
+    CHECK_INT((long)skipped, 0);
+    arena_free(a);
+}
+
+TEST(verify_ddb_skips_dumped)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[2] = { 10, 0x7000 };   /* second word: an XMB offset */
+    size_t len = ddb_build(b, w, 2), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 20, 2, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", "XYZ"), b, len, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 1);
+    CHECK_INT((long)skipped, 1);
+    arena_free(a);
+}
+
+TEST(verify_ddb_classic_padding)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[1] = { 10 };
+    size_t len = ddb_build(b, w, 1), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    b[3] = b[4] = b[5] = 0xA0;   /* padding entries: literal spaces */
+    obj_refs(refs, 20, 1, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", NULL), b, len, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 1);
+    arena_free(a);
+}
+
+TEST(verify_ddb_base_address)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[1] = { 0x80B };
+    size_t len = ddb_build(b, w, 1), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 0x801 + 20, 1, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", NULL), b, len, 0x801,
+                                   0x801, 0, refs, &bad_ref, &bad_index,
+                                   &skipped), 1);
+    arena_free(a);
+}
+
+TEST(verify_ddb_big_endian)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[1] = { 0x0A00 };   /* bytes 0A 00: big-endian 10 */
+    size_t len = ddb_build(b, w, 1), bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    obj_refs(refs, 20, 1, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", NULL), b, len, 0, 0, 1,
+                                   refs, &bad_ref, &bad_index, &skipped), 1);
+    arena_free(a);
+}
+
+TEST(verify_ddb_overrun_is_failure)
+{
+    Arena *a = arena_new(0);
+    unsigned char b[64];
+    unsigned w[1] = { 10 };
+    size_t bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    /* Lookup word at 4, unterminated "AB" at 10-11, buffer ends at 12. */
+    ddb_build(b, NULL, 0);
+    b[4] = (unsigned char)w[0]; b[5] = 0;
+    b[10] = 0x41 ^ 0xFF; b[11] = 0x42 ^ 0xFF;
+    obj_refs(refs, 4, 1, 1);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "AB", NULL), b, 12, 0, 0, 0,
+                                   refs, &bad_ref, &bad_index, &skipped), 0);
+    CHECK_INT(bad_ref, 0);
+    CHECK_INT((long)bad_index, 0);
+    arena_free(a);
+}
+
 int main(void)
 {
     RUN(parse_literal_only);
@@ -720,5 +910,14 @@ int main(void)
     RUN(snapshot_verify_covers_objects);
     RUN(compress_savings_include_objects);
     RUN(select_is_deterministic_with_objects);
+    RUN(verify_ddb_decodes_through_lookup);
+    RUN(verify_ddb_detects_mismatch);
+    RUN(verify_ddb_shared_words);
+    RUN(verify_ddb_empty_table);
+    RUN(verify_ddb_skips_dumped);
+    RUN(verify_ddb_classic_padding);
+    RUN(verify_ddb_base_address);
+    RUN(verify_ddb_big_endian);
+    RUN(verify_ddb_overrun_is_failure);
     return test_summary("tokselect");
 }

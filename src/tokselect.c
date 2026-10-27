@@ -505,6 +505,73 @@ int tokselect_verify(const Vec_MsgTable *before, const Adventure *adv,
     return ok;
 }
 
+/* Appends the text at buffer offset `at` to dec. Reference byte b
+   skips b-127 bit-7-terminated entries from tok_at, as the interpreter
+   does. 0 on any read past len. */
+static int decode_at(Str *dec, const unsigned char *ddb, size_t len,
+                     size_t at, size_t tok_at)
+{
+    for (;;) {
+        unsigned b;
+        size_t p = tok_at, skip;
+        if (at >= len) return 0;
+        b = ddb[at++] ^ 0xFFu;
+        if (b == 0x0A) return 1;
+        if (b < 128) { str_push(dec, (char)b); continue; }
+        for (skip = b - 127; skip > 0; p++) {
+            if (p >= len) return 0;
+            if (ddb[p] & 0x80) skip--;
+        }
+        do {
+            if (p >= len) return 0;
+            str_push(dec, (char)(ddb[p] & 0x7F));
+        } while (!(ddb[p++] & 0x80));
+    }
+}
+
+int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
+                         size_t ddb_len, long base_addr, long tokens_addr,
+                         int big_endian, const DdbTableRef refs[4],
+                         int *bad_ref, size_t *bad_index, size_t *skipped)
+{
+    Arena *scratch = arena_new(0);
+    long tok_off = tokens_addr - base_addr;
+    size_t tok_at = tok_off < 0 ? ddb_len : (size_t)tok_off;
+    size_t k;
+    int r, ok = 1;
+
+    *skipped = 0;
+    for (r = 0; r < 4; r++) *skipped += refs[r].count - refs[r].checked;
+    for (r = 0; ok && r < 4; r++) {
+        const DdbTableRef *t = &refs[r];
+        const Vec_Message *was = vec_at_MsgTable(before, (size_t)t->snap_index);
+        size_t n = vec_len_Message(was);
+        long lk = t->lookup_addr - base_addr;
+        if (t->count != n || t->checked > n) {   /* length differs from source */
+            *bad_ref = r;
+            *bad_index = t->count < n ? t->count : n;
+            ok = 0;
+            break;
+        }
+        for (k = 0; k < t->checked; k++) {
+            size_t w = (size_t)lk + 2 * k;
+            Str *ref = vec_at_Message(was, k)->Text, *dec = str_new(scratch);
+            long at;
+            if (lk < 0 || w + 1 >= ddb_len) { ok = 0; break; }
+            at = big_endian ? (ddb[w] << 8 | ddb[w + 1])
+                            : (ddb[w] | ddb[w + 1] << 8);
+            at -= base_addr;
+            ok = at >= 0 && decode_at(dec, ddb, ddb_len, (size_t)at, tok_at)
+                 && str_len(dec) == str_len(ref)
+                 && memcmp(str_bytes(dec), str_bytes(ref), str_len(ref)) == 0;
+            if (!ok) break;
+        }
+        if (!ok) { *bad_ref = r; *bad_index = k; }
+    }
+    arena_free(scratch);
+    return ok;
+}
+
 Vec_Str *tokselect_compress(Arena *a, Diag *d, const Adventure *adv,
                             TokenSet *ts, int classic_mode, int with_objects,
                             long *savings)

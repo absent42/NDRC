@@ -97,6 +97,22 @@ static int log_contains(const char *logpath, const char *needle)
     return found;
 }
 
+/* 1-based line of the first match, -1 if absent. */
+static int log_line_of(const char *logpath, const char *needle)
+{
+    FILE *f = fopen(logpath, "rb");
+    char line[1024];
+    int n = 0, at = -1;
+
+    if (f == NULL) return -1;
+    while (fgets(line, sizeof line, f) != NULL) {
+        n++;
+        if (strstr(line, needle) != NULL) { at = n; break; }
+    }
+    fclose(f);
+    return at;
+}
+
 static void write_text(const char *path, const char *content)
 {
     FILE *f = fopen(path, "wb");
@@ -373,6 +389,33 @@ TEST(verbose_reports_objects_and_shares)
     CHECK(log_contains(logp, "Shared 1 duplicate texts in objects ("));
 }
 
+TEST(tee_written_only_after_file_check)
+{
+    /* Positive path: the tee follows a passing file check. The failing
+       path is unit-tested in test_tokselect.c. */
+    char dsf[512], tok[512], out1[512], logp[512], args[1600];
+
+    scratch_path(dsf, sizeof dsf, "fc_tee.DSF");
+    scratch_path(tok, sizeof tok, "fc_tee.tok");
+    scratch_path(out1, sizeof out1, "fc_tee.ddb");
+    scratch_path(logp, sizeof logp, "fc_tee_log.txt");
+    remove(tok);
+    remove(out1);
+    CHECK(copy_file(OBJSHARE, dsf));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" --tok -v",
+             dsf, out1);
+    CHECK_INT(run_ndrc(args, logp), 0);
+    CHECK(file_size(tok) > 0);
+    CHECK(file_size(out1) > 0);
+    CHECK(!log_contains(logp, "self-check failed"));
+    /* The check runs once the location lookup is out. */
+    CHECK(log_line_of(logp, "Locations         ") > 0);
+    CHECK(log_line_of(logp, "Tokens written to") >
+          log_line_of(logp, "Locations         "));
+    remove(tok);
+}
+
 int main(void)
 {
     RUN(auto_tokens_beats_builtin);
@@ -382,5 +425,6 @@ int main(void)
     RUN(objects_compressed_and_duplicates_shared);
     RUN(flag_off_rows_untouched);
     RUN(verbose_reports_objects_and_shares);
+    RUN(tee_written_only_after_file_check);
     return test_summary("autotok");
 }
