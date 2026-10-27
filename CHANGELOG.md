@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.0 - unreleased
+
+- `-auto-tokens` compresses object texts too: they join the
+  compressable set under the optimal encoder.
+- `-auto-tokens` emits identical texts within a table once: the
+  lookup table points every duplicate at the one copy.
+- A marked `.tok` (`"encoder": "optimal"`) compiles with both on
+  reload, so `-auto-tokens` and marked-.tok output is smaller than the
+  0.3.0 build produced, and decodes identically. Unmarked and
+  hand-written `.tok` files and the builtin table compile exactly as
+  DRC would.
+- The compiler verifies the emitted DDB by decoding every text through
+  its lookup table before writing it.
+- The DDB stays format-identical and decodes on every DAAD
+  interpreter. Compatibility verification on NextDAAD hardware and on
+  original interpreters is pending.
+
 ## v0.3.0 - 25/10/2026
 
 - New `-srcmap=<path>` option: writes a DSM v2 source map beside the

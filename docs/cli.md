@@ -116,7 +116,7 @@ Case-insensitive (upper-cased before matching), dash-prefixed.
 | `-p` | Force padding. Cannot combine with `-np`. |
 | `-x` | Dump TX (text) sections to a separate `0.XMB` file instead of embedding them in the database. |
 | `-b=<addr>` | Override the target's default base address. Decimal, or hex with a `0x`/`0X` prefix. Must resolve to 1-0xFFFF. |
-| `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Encodes text with an optimal parse (smaller output than the sequential encoder); output DDBs remain format-identical and decode on every DAAD interpreter. |
+| `-auto-tokens` | Select compression tokens from the game's own text instead of the builtin language table. Case-sensitive, NDRC extension. Accepted on the join and `--from-json`. Wins over an implicit `.tok` beside the input (a notice names the bypassed file). Encodes text with an optimal parse (smaller output than the sequential encoder); output DDBs remain format-identical and decode on every DAAD interpreter. Also compresses object texts and emits each duplicate text once (shared lookup entries); both stay format-identical. |
 | `--tok[=path]` | Write the selected token table as a standard `.tok` file (bare form: `<input>.tok`, where the normal override lookup finds it on the next run). Implies `-auto-tokens`. Like `--json=`, a `--tok=` argument is never claimed as the output name. |
 | `-srcmap=<path>` | Write a DSM v2 source map to `<path>`: one record per emitted condact, entry and process (DSF file, line, column, DDB offset), plus the `#define` symbols. Used by the NextDAAD CSpect debugger. Case-sensitive, NDRC extension. Join only: `--from-json` refuses it (`-srcmap needs a .DSF source input`, exit 2, nothing written), because source positions exist only when the front end ran in-process. The DDB is byte-identical with or without it. File paths in the map are relative to the map's own directory. An empty path is an option error. With `-np` no map is written. A map that cannot be created is an error. |
 
@@ -138,16 +138,23 @@ measured 7.8% to 14.4% off compressed text+table against the builtin
 table. Selection is deterministic: the same source always produces the
 same table.
 
+Object texts are compressed along with the other text tables, and
+identical texts within a table are emitted once, with every duplicate's
+lookup entry pointing at the one copy. The DDB format is unchanged.
+
 Without the flag, output is byte-identical to DRC, as always. A
 compile with the flag self-checks: every compressed message is decoded
-back and compared against the source text before the DDB is written.
+back and compared against the source text, and the emitted DDB is
+verified by decoding every text through its lookup table, before the
+DDB is written.
 
 The freeze workflow: compile once with `-auto-tokens --tok`, then drop
 both flags - the written `.tok` sits beside the input where the normal
 override lookup picks it up. The tee records `"encoder": "optimal"`
 and the reload honours it, so the frozen build is byte-identical to the
-flagged one. Hand-written and DRT `.tok` files without the marker
-compile exactly as DRC would; stock DRC accepts a marked `.tok` and
+flagged one. A marked .tok compiles with object compression and
+duplicate sharing on reload; unmarked and hand-written .tok files
+compile exactly as DRC would. Stock DRC accepts a marked `.tok` and
 simply ignores the field.
 
 On targets other than NEXTDAAD, selected tokens never contain `_` or
