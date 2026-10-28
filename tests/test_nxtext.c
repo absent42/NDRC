@@ -280,7 +280,7 @@ TEST(nxtext_header_and_block)
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
     CHECK(log_contains(logp, "Text format 2: "));
-    CHECK(log_contains(logp, "File check: format 2"));
+    CHECK(!log_contains(logp, "File check: format 2"));
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v3", dsf, nx3);
     CHECK_INT(run_in(dir, args, logp), 0);
     CHECK(read_file(ctl, ddb_a, sizeof ddb_a, &n1) != NULL);

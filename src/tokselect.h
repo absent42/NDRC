@@ -76,11 +76,22 @@ typedef struct {
    emitted token table and compares with the snapshot. Returns 1 on
    success; 0 with *bad_ref and *bad_index set on the first mismatch or
    out-of-range address. *skipped = entries not checked. big_endian
-   is the target's lookup word order (ST, AMIGA). */
+   is the target's lookup word order (ST, AMIGA). ddb[0] bit 7 set:
+   format 2, the text block at tokens_addr is parsed and each text
+   Huffman-decoded; a malformed block gives *bad_ref = -1. */
 int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
                          size_t ddb_len, long base_addr, long tokens_addr,
                          int big_endian, const DdbTableRef refs[4],
                          int *bad_ref, size_t *bad_index, size_t *skipped);
+
+/* Format 2 XMB image xmb (file 0 at offset 0): checks the "X2" +
+   fingerprint header against the DDB's text block, then decodes each
+   snapshot xmessage at offsets[i]. 0 with *bad_index = i on a
+   mismatch, -1 on a block or header fault. */
+int tokselect_verify_xmb2(const Vec_MsgTable *before, const unsigned char *ddb,
+                          size_t ddb_len, long base_addr, long tokens_addr,
+                          const unsigned char *xmb, size_t xmb_len,
+                          const long *offsets, long *bad_index);
 
 /* Test seam: total optimal-parse cost of strings under tokens
    (literal byte 1, any token reference 1). tokens NULL = no tokens. */

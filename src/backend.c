@@ -241,6 +241,45 @@ static int nxtext_select(Arena *a, Diag *d, const Target *target,
     return 1;
 }
 
+/* Rebuilds the format 2 XMB image from the streams emit_xmessages2
+   wrote (headers at each file start, streams at their offsets) and
+   decodes it through the emitted DDB's text block. 0 after a fatal. */
+static int xmb2_check(Arena *a, Diag *d, const Adventure *adv,
+                      const Vec_MsgTable *pre, const Vec_Message *xcoded,
+                      const Str *block, const Str *out, long base_address,
+                      long tokens_addr)
+{
+    long size = adv->xmessage_size, file = adv->xmessage_max_k * 1024, f;
+    long bad = -1;
+    unsigned char *img = arena_calloc(a, (size_t)size + 1);
+    size_t k;
+
+    for (f = 0; file > 0 && f + 4 <= size; f += file) {
+        img[f] = 'X';
+        img[f + 1] = '2';
+        img[f + 2] = str_bytes(block)[5];
+        img[f + 3] = str_bytes(block)[6];
+    }
+    for (k = 0; k < vec_len_Message(xcoded); k++) {
+        const Str *c = vec_at_Message(xcoded, k)->Text;
+        long o = adv->xmessage_offsets[k];
+        if (o < 4 || o + (long)str_len(c) > size) { bad = (long)k; break; }
+        memcpy(img + o, str_bytes(c), str_len(c));
+    }
+    if (k == vec_len_Message(xcoded) &&
+        tokselect_verify_xmb2(pre, str_bytes(out), str_len(out), base_address,
+                              tokens_addr, img, (size_t)size,
+                              adv->xmessage_offsets, &bad))
+        return 1;
+    if (bad < 0)
+        diag_fatal(d, "auto-tokens self-check failed: XMB header does not "
+                      "match the emitted text block");
+    else
+        diag_fatal(d, "auto-tokens self-check failed: emitted xmessages "
+                      "text %ld does not decode back to source", bad);
+    return 0;
+}
+
 /* PORT: drb.php:804-812 checkMaluva / drb.php:814-817 MaluvaEmbedded,
    restated here for the drb.php:1922 call site (emit_proc.c keeps its
    own copies for its per-condact guards; not shared - both are file-
@@ -870,11 +909,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     /* Not in DRC: decodes the emitted texts through their lookups, which
        tokselect_verify cannot see (sharing happens at emission). -X
        dumps sysmess past 62 and every message and location (emit_msg.c). */
-    if (text2) {
-        if (opts->verbose)
-            printf("File check: format 2 (checked by the text2 decoder "
-                   "in a later task).\n");
-    } else if (ts->optimal_encode) {
+    if (ts->optimal_encode) {
         size_t nobj = vec_len_Message(adv->objects);
         size_t nsys = vec_len_Message(adv->sysmess);
         size_t nmsg = vec_len_Message(adv->messages);
@@ -894,15 +929,25 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
         };
         int bad_ref = 0;
         size_t bad_index = 0, skipped = 0;
+        /* Format 2 is keyed on version bit 7; the header patch sets it too. */
+        if (text2) str_set_u8(out, 0, (adv->v3code ? 3u : 2u) | 0x80u);
         if (!tokselect_verify_ddb(pre_texts, str_bytes(out),
                                   str_len(out), base_address,
                                   compressed_text_offset, target->big_endian,
                                   refs, &bad_ref, &bad_index, &skipped)) {
-            diag_fatal(d, "auto-tokens self-check failed: emitted %s text %lu "
-                          "does not decode back to source",
-                       refs[bad_ref].name, (unsigned long)bad_index);
+            if (bad_ref < 0)
+                diag_fatal(d, "auto-tokens self-check failed: emitted text "
+                              "block is malformed");
+            else
+                diag_fatal(d, "auto-tokens self-check failed: emitted %s "
+                              "text %lu does not decode back to source",
+                           refs[bad_ref].name, (unsigned long)bad_index);
             return diag_exit_code(d);
         }
+        if (text2 && vec_len_Message(t2_tabs[3]) > 0 &&
+            !xmb2_check(a, d, adv, pre_texts, t2_tabs[3], t2_block, out,
+                        base_address, compressed_text_offset))
+            return diag_exit_code(d);
         if (opts->verbose && skipped > 0)
             printf("File check: skipped %lu XMB-dumped texts.\n",
                    (unsigned long)skipped);

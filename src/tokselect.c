@@ -2,6 +2,7 @@
 /* src/tokselect.c - per-game compression token selection (-auto-tokens).
    Copyright (C) 2026 Dan Gibson. */
 #include "tokselect.h"
+#include "huff.h"
 #include <string.h>
 
 /* First-byte buckets over a token list; entries keep their vec order. */
@@ -646,11 +647,207 @@ static int decode_at(Str *dec, const unsigned char *ddb, size_t len,
     }
 }
 
+/* Format 2 text block parsed from the emitted bytes; canonical decode
+   tables rebuilt from the lengths alone. */
+typedef struct {
+    unsigned ntok, fp;
+    unsigned short count[HUFF_MAXLEN + 1], sym[HUFF_MAXSYM];
+    const unsigned char *ent[383];    /* length byte, then the body */
+} Block2;
+
+static int entry_has_ref(const unsigned char *e)
+{
+    unsigned i;
+    for (i = 1; i <= e[0]; i++) if (e[i] >= 128) return 1;
+    return 0;
+}
+
+static int block2_parse(Block2 *b, const unsigned char *ddb, size_t len,
+                        long at_l)
+{
+    const unsigned char *p;
+    unsigned char lengths[512];
+    unsigned flags, nsym, lbytes, i, l, n = 0;
+    unsigned short offs[HUFF_MAXLEN + 2];
+    long left = 1;
+    size_t at, room;
+
+    if (at_l < 0 || (size_t)at_l >= len || len - (size_t)at_l < 7) return 0;
+    at = (size_t)at_l;
+    p = ddb + at;
+    room = len - at;
+    flags = p[2];
+    if (p[0] != 'H' || p[1] != '2' || (flags & 0xFE)) return 0;
+    nsym = flags ? 511 : 256;
+    lbytes = flags ? 256 : 128;
+    b->ntok = (unsigned)p[3] | (unsigned)p[4] << 8;
+    b->fp = (unsigned)p[5] | (unsigned)p[6] << 8;
+    if (b->ntok == 0 || b->ntok > (flags ? 383u : 128u) ||
+        room < 7 + lbytes + 2 * (size_t)b->ntok ||
+        crc16_ccitt(p + 7, lbytes) != b->fp) return 0;
+
+    /* Unpack; no length for the pad nibble or a symbol past ntok. */
+    for (i = 0; i < 2 * lbytes; i++) {
+        lengths[i] = (unsigned char)(p[7 + i / 2] >> (i % 2 ? 4 : 0) & 15);
+        if (lengths[i] && (i >= nsym || i >= 128 + b->ntok)) return 0;
+    }
+    memset(b->count, 0, sizeof b->count);
+    for (i = 0; i < nsym; i++) b->count[lengths[i]]++;
+    b->count[0] = 0;
+    for (l = 1; l <= HUFF_MAXLEN; l++) {      /* Kraft: not over-full */
+        left = 2 * left - b->count[l];
+        if (left < 0) return 0;
+    }
+    offs[1] = 0;
+    for (l = 1; l <= HUFF_MAXLEN; l++)
+        offs[l + 1] = (unsigned short)(offs[l] + b->count[l]);
+    for (i = 0; i < nsym; i++)
+        if (lengths[i]) { b->sym[offs[lengths[i]]++] = (unsigned short)i; n++; }
+    if (n == 0) return 0;
+
+    for (i = 0; i < b->ntok; i++) {
+        const unsigned char *w = p + 7 + lbytes + 2 * i;
+        size_t off = (size_t)w[0] | (size_t)w[1] << 8;
+        if (off >= room || p[off] < 1 || p[off] > 32 ||
+            room - off < 1 + (size_t)p[off]) return 0;
+        b->ent[i] = p + off;
+    }
+    /* References: tokens 0-127 whose entries hold none. */
+    for (i = 0; i < b->ntok; i++) {
+        const unsigned char *e = b->ent[i];
+        for (l = 1; l <= e[0]; l++)
+            if (e[l] >= 128 && ((unsigned)e[l] - 128 >= b->ntok ||
+                                entry_has_ref(b->ent[e[l] - 128]))) return 0;
+    }
+    return 1;
+}
+
+/* One symbol at bit *pos of d[0..len), MSB first; -1 past the end or
+   on an unassigned code. */
+static int block2_sym(const Block2 *b, const unsigned char *d, size_t len,
+                      size_t *pos)
+{
+    unsigned code = 0, first = 0, index = 0, l;
+
+    for (l = 1; l <= HUFF_MAXLEN; l++) {
+        if (*pos >= 8 * len) return -1;
+        code |= (unsigned)(d[*pos >> 3] >> (7 - (*pos & 7))) & 1u;
+        (*pos)++;
+        if (code - first < b->count[l]) return b->sym[index + code - first];
+        index += b->count[l];
+        first = (first + b->count[l]) << 1;
+        code <<= 1;
+    }
+    return -1;
+}
+
+/* Decodes the stream at d[at] to its end code, entries expanded one
+   level, and compares with want. */
+static int block2_matches(const Block2 *b, Arena *a, const unsigned char *d,
+                          size_t len, long at, const Str *want)
+{
+    Str *dec = str_new(a);
+    size_t pos = 0;
+
+    if (at < 0 || (size_t)at >= len) return 0;
+    for (;;) {
+        int s = block2_sym(b, d + at, len - (size_t)at, &pos);
+        const unsigned char *e;
+        unsigned i, j;
+        if (s < 0 || str_len(dec) > str_len(want)) return 0;
+        if (s == 10) break;
+        if (s < 128) { str_push_u8(dec, (unsigned)s); continue; }
+        e = b->ent[s - 128];
+        for (i = 1; i <= e[0]; i++) {
+            const unsigned char *t;
+            if (e[i] < 128) { str_push_u8(dec, e[i]); continue; }
+            t = b->ent[e[i] - 128];
+            for (j = 1; j <= t[0]; j++) str_push_u8(dec, t[j]);
+        }
+    }
+    return str_len(dec) == str_len(want) &&
+           memcmp(str_bytes(dec), str_bytes(want), str_len(want)) == 0;
+}
+
+static int verify_ddb2(const Vec_MsgTable *before, const unsigned char *ddb,
+                       size_t ddb_len, long base_addr, long tokens_addr,
+                       int big_endian, const DdbTableRef refs[4],
+                       int *bad_ref, size_t *bad_index, size_t *skipped)
+{
+    Arena *scratch;
+    Block2 b;
+    size_t k;
+    int r, ok = 1;
+
+    *skipped = 0;
+    for (r = 0; r < 4; r++) *skipped += refs[r].count - refs[r].checked;
+    if (!block2_parse(&b, ddb, ddb_len, tokens_addr - base_addr)) {
+        *bad_ref = -1;
+        *bad_index = 0;
+        return 0;
+    }
+    scratch = arena_new(0);
+    for (r = 0; ok && r < 4; r++) {
+        const DdbTableRef *t = &refs[r];
+        const Vec_Message *was = vec_at_MsgTable(before, (size_t)t->snap_index);
+        size_t n = vec_len_Message(was);
+        long lk = t->lookup_addr - base_addr;
+        if (t->count != n || t->checked > n) {
+            *bad_ref = r;
+            *bad_index = t->count < n ? t->count : n;
+            ok = 0;
+            break;
+        }
+        for (k = 0; k < t->checked; k++) {
+            size_t w = (size_t)lk + 2 * k;
+            long at;
+            if (lk < 0 || w + 1 >= ddb_len) { ok = 0; break; }
+            at = big_endian ? (ddb[w] << 8 | ddb[w + 1])
+                            : (ddb[w] | ddb[w + 1] << 8);
+            ok = block2_matches(&b, scratch, ddb, ddb_len, at - base_addr,
+                                vec_at_Message(was, k)->Text);
+            if (!ok) break;
+        }
+        if (!ok) { *bad_ref = r; *bad_index = k; }
+    }
+    arena_free(scratch);
+    return ok;
+}
+
+int tokselect_verify_xmb2(const Vec_MsgTable *before, const unsigned char *ddb,
+                          size_t ddb_len, long base_addr, long tokens_addr,
+                          const unsigned char *xmb, size_t xmb_len,
+                          const long *offsets, long *bad_index)
+{
+    const Vec_Message *was = vec_at_MsgTable(before, 3);
+    Arena *scratch;
+    Block2 b;
+    size_t k;
+    int ok = 1;
+
+    *bad_index = -1;
+    if (!block2_parse(&b, ddb, ddb_len, tokens_addr - base_addr) ||
+        xmb_len < 4 || xmb[0] != 'X' || xmb[1] != '2' ||
+        ((unsigned)xmb[2] | (unsigned)xmb[3] << 8) != b.fp) return 0;
+    scratch = arena_new(0);
+    for (k = 0; ok && k < vec_len_Message(was); k++) {
+        ok = block2_matches(&b, scratch, xmb, xmb_len, offsets[k],
+                            vec_at_Message(was, k)->Text);
+        if (!ok) *bad_index = (long)k;
+    }
+    arena_free(scratch);
+    return ok;
+}
+
 int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
                          size_t ddb_len, long base_addr, long tokens_addr,
                          int big_endian, const DdbTableRef refs[4],
                          int *bad_ref, size_t *bad_index, size_t *skipped)
 {
+    /* Byte 0 is the header version when the text block sits past it. */
+    if (tokens_addr > base_addr && ddb_len > 0 && (ddb[0] & 0x80))
+        return verify_ddb2(before, ddb, ddb_len, base_addr, tokens_addr,
+                           big_endian, refs, bad_ref, bad_index, skipped);
     Arena *scratch = arena_new(0);
     long tok_off = tokens_addr - base_addr;
     size_t tok_at = tok_off < 0 ? ddb_len : (size_t)tok_off;
