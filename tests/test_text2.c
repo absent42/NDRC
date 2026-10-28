@@ -206,7 +206,7 @@ TEST(picks_128_when_383_loses)
 {
     Arena *a = arena_new(0);
     Diag *d = diag_new(a);
-    Text2Result *r = text2_build(a, d, small_corpus(a), NULL);
+    Text2Result *r = text2_build(a, d, small_corpus(a), NULL, 65535);
     CHECK(r != NULL);
     CHECK_INT(r->alphabet383, 0);
     CHECK_INT(r->nsym, 256);
@@ -218,13 +218,75 @@ TEST(picks_383_when_it_wins)
 {
     Arena *a = arena_new(0);
     Diag *d = diag_new(a);
-    Text2Result *r = text2_build(a, d, phrase_corpus(a), NULL);
+    Text2Result *r = text2_build(a, d, phrase_corpus(a), NULL, 65535);
     CHECK(r != NULL);
     CHECK_INT(r->alphabet383, 1);
     CHECK_INT(r->nsym, 511);
     CHECK(vec_len_Str(r->tokens) > 128);
     CHECK(vec_len_Str(r->tokens) <= 383);
     CHECK(entries_one_level(r->entries));
+    arena_free(a);
+}
+
+TEST(region_bytes_excludes_xmb)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    const Vec_Str *c = phrase_corpus(a);
+    size_t n = vec_len_Str(c), i;
+    int *g = arena_alloc(a, n * sizeof(*g));
+    Text2Result *r;
+    long want;
+
+    for (i = 0; i < n; i++) g[i] = i < 2 ? 0 : -1;
+    r = text2_build(a, d, c, g, 65535);
+    CHECK(r != NULL);
+    want = r->block_bytes + (long)str_len(vec_at_Str(r->coded, 0)) +
+           (long)str_len(vec_at_Str(r->coded, 1));
+    CHECK_INT(r->region_bytes, want);
+    arena_free(a);
+}
+
+/* Two group-0 strings, the rest XMB: 383 wins the objective on the XMB
+   savings but its larger block makes the region bigger. */
+static int *xmb_groups(Arena *a, size_t n)
+{
+    int *g = arena_alloc(a, n * sizeof(*g));
+    size_t i;
+
+    for (i = 0; i < n; i++) g[i] = i < 2 ? 0 : -1;
+    return g;
+}
+
+TEST(region_max_forces_fitting_alphabet)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    const Vec_Str *c = phrase_corpus(a);
+    int *g = xmb_groups(a, vec_len_Str(c));
+    Text2Result *r = text2_build(a, d, c, g, 65535);
+    long big;
+
+    CHECK_INT(r->alphabet383, 1);
+    big = r->region_bytes;
+    r = text2_build(a, d, c, g, big - 1);
+    CHECK_INT(r->alphabet383, 0);
+    CHECK(r->region_bytes <= big - 1);
+    arena_free(a);
+}
+
+TEST(region_max_neither_fits)
+{
+    Arena *a = arena_new(0);
+    Diag *d = diag_new(a);
+    const Vec_Str *c = phrase_corpus(a);
+    int *g = xmb_groups(a, vec_len_Str(c));
+    Text2Result *big = text2_build(a, d, c, g, 65535);
+    Text2Result *r = text2_build(a, d, c, g, 1);
+
+    CHECK_INT(big->alphabet383, 1);
+    CHECK_INT(r->alphabet383, 0);
+    CHECK(r->region_bytes < big->region_bytes);
     arena_free(a);
 }
 
@@ -320,8 +382,8 @@ TEST(coded_streams_decode)
     Arena *a = arena_new(0);
     Diag *d = diag_new(a);
     Vec_Str *s1 = small_corpus(a), *s2 = phrase_corpus(a);
-    Text2Result *r1 = text2_build(a, d, s1, NULL);
-    Text2Result *r2 = text2_build(a, d, s2, NULL);
+    Text2Result *r1 = text2_build(a, d, s1, NULL, 65535);
+    Text2Result *r2 = text2_build(a, d, s2, NULL, 65535);
 
     CHECK(decodes_all(r1, s1));
     CHECK(decodes_all(r2, s2));
@@ -348,8 +410,8 @@ static int vecs_equal(const Vec_Str *x, const Vec_Str *y)
 TEST(deterministic_double_run)
 {
     Arena *a = arena_new(0), *b = arena_new(0);
-    Text2Result *x = text2_build(a, diag_new(a), phrase_corpus(a), NULL);
-    Text2Result *y = text2_build(b, diag_new(b), phrase_corpus(b), NULL);
+    Text2Result *x = text2_build(a, diag_new(a), phrase_corpus(a), NULL, 65535);
+    Text2Result *y = text2_build(b, diag_new(b), phrase_corpus(b), NULL, 65535);
     Str *bx = text2_block(a, x), *by = text2_block(b, y);
 
     CHECK_INT(x->alphabet383, y->alphabet383);
@@ -372,6 +434,9 @@ int main(void)
     RUN(renumbers_referenced_below_128);
     RUN(picks_128_when_383_loses);
     RUN(picks_383_when_it_wins);
+    RUN(region_bytes_excludes_xmb);
+    RUN(region_max_forces_fitting_alphabet);
+    RUN(region_max_neither_fits);
     RUN(block_layout);
     RUN(coded_streams_decode);
     RUN(deterministic_double_run);

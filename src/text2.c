@@ -282,14 +282,16 @@ static Text2Result *build_one(Arena *a, Diag *d, const Vec_Str *strings,
     return r;
 }
 
-/* Coded bytes with each equal stream of a group counted once. */
-static long unique_bytes(const Vec_Str *coded, const int *group)
+/* Coded bytes with each equal stream of a group counted once; xmb_too
+   false leaves out group -1 (XMB) streams. */
+static long unique_bytes(const Vec_Str *coded, const int *group, int xmb_too)
 {
     long n = 0;
     size_t i, j;
 
     for (i = 0; i < vec_len_Str(coded); i++) {
         const Str *c = vec_at_Str(coded, i);
+        if (!xmb_too && group != NULL && group[i] < 0) continue;
         for (j = 0; group != NULL && group[i] >= 0 && j < i; j++) {
             const Str *p = vec_at_Str(coded, j);
             if (group[j] == group[i] && str_len(p) == str_len(c) &&
@@ -302,9 +304,10 @@ static long unique_bytes(const Vec_Str *coded, const int *group)
 }
 
 Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings,
-                         const int *group)
+                         const int *group, long region_max)
 {
     Text2Result *r128, *r383;
+    int fit128, fit383;
     size_t i, k;
 
     for (i = 0; i < vec_len_Str(strings); i++) {
@@ -318,8 +321,14 @@ Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings,
     }
     r128 = build_one(a, d, strings, 128);
     r383 = build_one(a, d, strings, 383);
-    r128->unique_bytes = unique_bytes(r128->coded, group);
-    r383->unique_bytes = unique_bytes(r383->coded, group);
+    r128->unique_bytes = unique_bytes(r128->coded, group, 1);
+    r128->region_bytes = r128->block_bytes + unique_bytes(r128->coded, group, 0);
+    r383->unique_bytes = unique_bytes(r383->coded, group, 1);
+    r383->region_bytes = r383->block_bytes + unique_bytes(r383->coded, group, 0);
+    fit128 = r128->region_bytes <= region_max;
+    fit383 = r383->region_bytes <= region_max;
+    if (fit128 != fit383) return fit383 ? r383 : r128;
+    if (!fit128) return r383->region_bytes < r128->region_bytes ? r383 : r128;
     return r383->unique_bytes + r383->block_bytes <
            r128->unique_bytes + r128->block_bytes ? r383 : r128;
 }

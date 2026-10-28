@@ -210,7 +210,7 @@ static int nxtext_select(Arena *a, Diag *d, const Target *target,
         original += table_bytes(m, 0);
     }
     idx = 0;
-    r = text2_build(a, d, corpus, group);
+    r = text2_build(a, d, corpus, group, 65535);
     if (r == NULL) return -1;
 
     f1 = table_bytes(adv->locations, 1) + table_bytes(adv->messages, 1) +
