@@ -189,10 +189,16 @@ text encoding: every text (objects, system messages, messages,
 locations and XMESSAGEs) is one canonical Huffman bit stream ending in
 its own end-of-message code, over a per-game dictionary of up to 383
 tokens, each reachable through a 2-byte index. Only a NextDAAD that
-reads format 2 can open such a DDB: the version byte carries bit 7
-(0x82, or 0x83 under `-v3`), which every other interpreter and every
-older NextDAAD refuses. The token table slot (header offset 8) points at
-the format 2 text block, which starts with the magic "H2".
+reads the region layout can open such a DDB: the version byte carries
+bit 7 (0x82, or 0x83 under `-v3`), which every other interpreter and
+every older NextDAAD refuses.
+
+The file is part A followed by the text region. Part A holds the header,
+tables, vocabulary and processes; header offset 32 holds its length. The
+text region holds the format 2 text block (magic "H2") at region offset
+0, then the coded texts, and header offset 8 is 0. Every text lookup
+word is an offset into the region, not a memory address. Part A and the
+region are each limited to 65535 bytes, so a file can reach 131070.
 
 The compiler builds format 1 as `-auto-tokens` does and format 2 from
 the same texts, and emits format 2 whenever the selection found a
@@ -212,6 +218,14 @@ and the "Compression Tokens" line of the size report gives the text
 block size. Format 2 texts are stored as is (no XOR) and duplicate
 texts are still emitted once. `-no-object-tokens` does not apply when
 format 2 is emitted: object texts are coded like every other text.
+
+A format 2 build always ends its size report with
+`Part A is <n> bytes, text region is <n> bytes.` after the total, and
+`-v` adds a `Text region` line to the address map. Part A over 65535 is
+the usual `DDB file goes <n> bytes over the 65535 memory address
+boundary`; a region over 65535 is
+`Text region goes <n> bytes over the 65535 limit` (exit 2, no DDB
+written).
 
 Under format 2, `0.XMB` is written after coding, with a 4-byte header:
 "X2" and the 16-bit fingerprint (CRC-16 of the text block's code

@@ -631,15 +631,17 @@ static int blank_variant(const char *out, const char *const *msgs,
     return fclose(f) == 0;
 }
 
+/* The DUP fixture: 6 texts x 31 copies. */
+static const char *dup_msgs[6] = {
+    "You are in a small room.", "You are in a long corridor.",
+    "You are in a dark cellar.", "You are in a bright hall.",
+    "You are in a narrow passage.", "You are in a cold kitchen."
+};
+
 TEST(nxtext_duplicates_reported)
 {
     /* 6 texts x 31 copies: shared duplicates count once in the
        reported difference, which is the file difference exactly. */
-    static const char *msgs[6] = {
-        "You are in a small room.", "You are in a long corridor.",
-        "You are in a dark cellar.", "You are in a bright hall.",
-        "You are in a narrow passage.", "You are in a cold kitchen."
-    };
     char dir[512], dsf[700], ctl[700], nx[700], logp[700], args[3000];
     long s1, s2, n = 0;
 
@@ -648,7 +650,7 @@ TEST(nxtext_duplicates_reported)
     snprintf(ctl, sizeof ctl, "%s/ctl.ddb", dir);
     snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
     snprintf(logp, sizeof logp, "%s/log.txt", dir);
-    CHECK(blank_variant(dsf, msgs, 6, 186, NULL));
+    CHECK(blank_variant(dsf, dup_msgs, 6, 186, NULL));
 
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens", dsf, ctl);
     CHECK_INT(run_in(dir, args, logp), 0);
@@ -668,13 +670,6 @@ TEST(nxtext_duplicates_reported)
     }
 }
 
-/* The DUP fixture: 6 texts x 31 copies. */
-static const char *dup_msgs[6] = {
-    "You are in a small room.", "You are in a long corridor.",
-    "You are in a dark cellar.", "You are in a bright hall.",
-    "You are in a narrow passage.", "You are in a cold kitchen."
-};
-
 TEST(region_layout)
 {
     char dir[512], dsf[1200], ctl[700], nx[700], logp[700];
@@ -691,8 +686,10 @@ TEST(region_layout)
 
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens", dsf, ctl);
     CHECK_INT(run_in(dir, args, logp), 0);
-    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
+    CHECK(log_contains(logp, "Text region       ["));
+    CHECK(log_contains(logp, "Tokens            [0x0000]"));
     CHECK(read_file(ctl, ddb_a, sizeof ddb_a, &n1) != NULL);
     CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n2) != NULL);
     if (n1 == 0 || n2 < 0x22) return;
@@ -736,8 +733,9 @@ TEST(region_layout)
 
 TEST(region_shares_duplicates)
 {
-    char dir[512], dsf[700], nx[700], logp[700], args[3000];
+    char dir[512], dsf[700], nx[700], logp[700], args[3000], txt[256];
     long n = 0;
+    Block2 b;
     int k;
 
     scratch_dir(dir, sizeof dir, "ndrc_nx_rdup");
@@ -754,6 +752,124 @@ TEST(region_shares_duplicates)
         CHECK_INT(ddb_lookup_word(ddb_b, 1, k), ddb_lookup_word(ddb_b, 1, k + 6));
     for (k = 0; k + 1 < 6; k++)
         CHECK(ddb_lookup_word(ddb_b, 1, k) != ddb_lookup_word(ddb_b, 1, k + 1));
+    CHECK(block2_parse(ddb_b, n, &b));
+    for (k = 0; k < 7; k += 6) {
+        txt[0] = '\0';
+        CHECK(region_text(&b, ddb_lookup_word(ddb_b, 1, k), txt, sizeof txt));
+        CHECK_STR(txt, dup_msgs[0]);
+    }
+}
+
+/* Seeded pseudo-random letters and spaces, no real text. */
+static void synth_text(char *out, int len, unsigned *seed)
+{
+    int i;
+
+    for (i = 0; i < len; i++) {
+        *seed = *seed * 1103515245u + 12345u;
+        unsigned r = (*seed >> 16) % 32;
+        out[i] = r < 26 ? (char)('a' + r) : ' ';
+    }
+    out[len] = '\0';
+}
+
+/* PRO 7 text of n one-condact entries. */
+static char *synth_pro7(int n)
+{
+    size_t sz = 32 + (size_t)n * 40;
+    char *p = malloc(sz), *w = p;
+    int i;
+
+    if (p == NULL) return NULL;
+    w += sprintf(w, "/PRO 7\r\n\r\n");
+    for (i = 0; i < n; i++)
+        w += sprintf(w, "> _       _     SET     %d\r\n", 100 + i % 100);
+    return p;
+}
+
+/* BLANK_EN variant with nmsg messages of mlen synthetic characters and
+   nent process entries; runs -nxtext into dir/out.ddb. */
+static int synth_run(const char *dir, int nmsg, int mlen, int nent,
+                     char *dsf, char *out, char *logp, int *rc)
+{
+    static char store[250][600];
+    const char *ptrs[250];
+    char args[3000], *pro7 = NULL;
+    unsigned seed = 12345u;
+    int k, ok;
+
+    for (k = 0; k < nmsg; k++) {
+        synth_text(store[k], mlen, &seed);
+        ptrs[k] = store[k];
+    }
+    if (nent > 0 && (pro7 = synth_pro7(nent)) == NULL) return 0;
+    snprintf(dsf, 700, "%s/SYN.DSF", dir);
+    snprintf(out, 700, "%s/out.ddb", dir);
+    snprintf(logp, 700, "%s/log.txt", dir);
+    remove(out);
+    ok = blank_variant(dsf, ptrs, nmsg, nmsg, pro7);
+    free(pro7);
+    if (!ok) return 0;
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, out);
+    *rc = run_in(dir, args, logp);
+    return 1;
+}
+
+#define NENT_BIG 14500
+
+TEST(file_over_64k_fits_both_budgets)
+{
+    char dir[512], dsf[700], out[700], logp[700];
+    long n = 0, part_a, region;
+    int rc = -1;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_big");
+    CHECK(synth_run(dir, 200, 100, NENT_BIG, dsf, out, logp, &rc));
+    CHECK_INT(rc, 0);
+    n = file_size(out);
+    CHECK(n > 65535);
+    {
+        static unsigned char big[140000];
+        long m = 0;
+        if (read_file(out, big, sizeof big, &m) == NULL || m < 0x22) return;
+        part_a = (long)word_at(big, 0x20);
+        region = m - part_a;
+        CHECK(part_a < 65536);
+        CHECK(region > 0 && region < 65536);
+        CHECK_INT(word_at(big, 0x08), 0);
+        {
+            char want[128];
+            snprintf(want, sizeof want,
+                     "Part A is %ld bytes, text region is %ld bytes.",
+                     part_a, region);
+            CHECK(log_contains(logp, want));
+        }
+    }
+}
+
+TEST(region_over_limit_fails)
+{
+    char dir[512], dsf[700], out[700], logp[700];
+    int rc = -1;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_rover");
+    CHECK(synth_run(dir, 250, 500, 0, dsf, out, logp, &rc));
+    CHECK_INT(rc, 2);
+    CHECK(log_contains(logp, "Text region goes "));
+    CHECK(log_contains(logp, " bytes over the 65535 limit"));
+    CHECK(file_size(out) < 0);
+}
+
+TEST(part_a_over_limit_fails)
+{
+    char dir[512], dsf[700], out[700], logp[700];
+    int rc = -1;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_aover");
+    CHECK(synth_run(dir, 2, 20, 17500, dsf, out, logp, &rc));
+    CHECK_INT(rc, 2);
+    CHECK(log_contains(logp, "memory address boundary"));
+    CHECK(file_size(out) < 0);
 }
 
 TEST(forced_base_word32_is_length)
@@ -842,6 +958,9 @@ int main(void)
     RUN(nxtext_duplicates_reported);
     RUN(region_layout);
     RUN(region_shares_duplicates);
+    RUN(file_over_64k_fits_both_budgets);
+    RUN(region_over_limit_fails);
+    RUN(part_a_over_limit_fails);
     RUN(forced_base_word32_is_length);
     RUN(format1_untouched);
     return test_summary("nxtext");

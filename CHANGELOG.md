@@ -35,6 +35,8 @@
   dictionary of up to 383 tokens, version byte bit 7 set - whenever
   the selection finds a token; `-v` reports a build that came out
   larger than format 1. `-x` and `--tok` are refused with it.
+  The coded texts live in a separate 64K text region after part A, so a
+  game can reach 128K of file.
 
 ## v0.3.0 - 25/10/2026
 
