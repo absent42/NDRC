@@ -334,13 +334,14 @@ TEST(nxtext_smaller_or_fallback)
     CHECK_INT(run_in(dir, args, logp), 0);
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
-    CHECK(!log_contains(logp, "not smaller"));
+    CHECK(!log_contains(logp, "format 1 emitted"));
     s1 = file_size(ctl);
     s2 = file_size(nx);
     CHECK(s1 > 0 && s2 > 0);
     CHECK(s2 * 100 <= s1 * 95);
 
-    /* Small games: format 1, printed without -v, same bytes. */
+    /* Small games: format 2 all the same (the index is the speed gain);
+       a larger total is reported under -v only. */
     for (k = 0; k < 2; k++) {
         long n = 0;
         snprintf(dsf, sizeof dsf, "%s/%s", root, small[k]);
@@ -348,10 +349,16 @@ TEST(nxtext_smaller_or_fallback)
         CHECK_INT(run_in(dir, args, logp), 0);
         snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
         CHECK_INT(run_in(dir, args, logp), 0);
-        CHECK(log_contains(logp, "Text format 2 not smaller; format 1 emitted."));
+        CHECK(!log_contains(logp, "format 1 emitted"));
+        CHECK(!log_contains(logp, "bytes larger"));
         CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n) != NULL);
-        if (n > 0) CHECK_INT(ddb_b[0], 2);
-        CHECK(files_equal(ctl, nx));
+        if (n > 0) CHECK_INT(ddb_b[0], 0x82);
+        CHECK(!files_equal(ctl, nx));
+        snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, nx);
+        CHECK_INT(run_in(dir, args, logp), 0);
+        CHECK(log_contains(logp, "Text format 2: "));
+        if (file_size(nx) > file_size(ctl))
+            CHECK(log_contains(logp, "bytes larger than format 1."));
     }
 }
 
@@ -410,9 +417,9 @@ TEST(nxtext_refusals)
     remove(nx);
     snprintf(args, sizeof args, "--from-json NEXTDAAD EN \"%s\" \"%s\" -nxtext", json, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
-    CHECK(log_contains(logp, "Text format 2 not smaller; format 1 emitted."));
+    CHECK(!log_contains(logp, "format 1 emitted"));
     CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n) != NULL);
-    if (n > 0) CHECK_INT(ddb_b[0], 3);
+    if (n > 0) CHECK_INT(ddb_b[0], 0x83);
 }
 
 /* Format 1 XMB texts, in file order. */
@@ -611,9 +618,10 @@ static int blank_variant(const char *out, const char *const *msgs,
     return fclose(f) == 0;
 }
 
-TEST(nxtext_duplicates_never_bigger)
+TEST(nxtext_duplicates_reported)
 {
-    /* 6 texts x 31 copies: format 2 won while every copy was counted. */
+    /* 6 texts x 31 copies: shared duplicates count once in the
+       reported difference, which is the file difference exactly. */
     static const char *msgs[6] = {
         "You are in a small room.", "You are in a long corridor.",
         "You are in a dark cellar.", "You are in a bright hall.",
@@ -631,16 +639,19 @@ TEST(nxtext_duplicates_never_bigger)
 
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens", dsf, ctl);
     CHECK_INT(run_in(dir, args, logp), 0);
-    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
     s1 = file_size(ctl);
     s2 = file_size(nx);
     CHECK(s1 > 0 && s2 > 0);
-    CHECK(s2 <= s1);
     CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n) != NULL);
-    if (n > 0 && ddb_b[0] == 2) {
-        CHECK(log_contains(logp, "Text format 2 not smaller; format 1 emitted."));
-        CHECK(files_equal(ctl, nx));
+    if (n > 0) CHECK_INT(ddb_b[0], 0x82);
+    if (s2 > s1) {
+        snprintf(args, sizeof args,
+                 "Text format 2 is %ld bytes larger than format 1.", s2 - s1);
+        CHECK(log_contains(logp, args));
+    } else {
+        CHECK(!log_contains(logp, "bytes larger"));
     }
 }
 
@@ -653,6 +664,7 @@ TEST(format1_untouched)
         "/PRO 7\r\n\r\n> _       _     XMES    \"Hello.\"\r\n";
     char dir[512], dsf[700], ctl[700], nx[700], xmb[700], xctl[700];
     char logp[700], args[3000];
+    long n = 0;
 
     /* Goldens: NDRC 3ecdf80 builds of the same fixtures. */
     scratch_dir(dir, sizeof dir, "ndrc_nx_f1");
@@ -664,11 +676,8 @@ TEST(format1_untouched)
     CHECK(same_as_golden(dir, BIGDDB, "-auto-tokens", GNX "BIGDDB_auto.ddb", NULL));
     CHECK(same_as_golden(dir, NXMSG, "", GNX "NXMSG_plain.ddb", GNX "NXMSG_plain.0.XMB"));
     CHECK(same_as_golden(dir, NXMSG, "-auto-tokens", GNX "NXMSG_auto.ddb", GNX "NXMSG_auto.0.XMB"));
-    /* A -nxtext fallback is the -auto-tokens build. */
-    CHECK(same_as_golden(dir, OBJSHARE, "-nxtext", GNX "OBJSHARE_auto.ddb", NULL));
-    CHECK(same_as_golden(dir, BLANK_EN, "-nxtext", GNX "BLANK_EN_auto.ddb", NULL));
 
-    /* Fallback with a short XMESSAGE: DDB and 0.XMB as -auto-tokens. */
+    /* A short XMESSAGE still codes: format 2 DDB and "X2" XMB. */
     snprintf(dsf, sizeof dsf, "%s/XSHORT.DSF", dir);
     snprintf(ctl, sizeof ctl, "%s/ctl.ddb", dir);
     snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
@@ -683,10 +692,14 @@ TEST(format1_untouched)
     CHECK(rename(xmb, xctl) == 0);
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
-    CHECK(log_contains(logp, "Text format 2 not smaller; format 1 emitted."));
+    CHECK(!log_contains(logp, "format 1 emitted"));
     CHECK(file_size(xctl) > 0);
-    CHECK(files_equal(ctl, nx));
-    CHECK(files_equal(xmb, xctl));
+    CHECK(!files_equal(ctl, nx));
+    CHECK(read_file(xmb, xmb_a, sizeof xmb_a, &n) != NULL);
+    if (n >= 4) {
+        CHECK_INT(xmb_a[0], 'X');
+        CHECK_INT(xmb_a[1], '2');
+    }
     remove(xmb);
     remove(xctl);
 }
@@ -700,7 +713,7 @@ int main(void)
     RUN(nxtext_refusals);
     RUN(nxtext_xmb_header);
     RUN(nxtext_xmb_oversize_refused);
-    RUN(nxtext_duplicates_never_bigger);
+    RUN(nxtext_duplicates_reported);
     RUN(format1_untouched);
     return test_summary("nxtext");
 }

@@ -179,10 +179,11 @@ static long table_bytes(const Vec_Message *m, int share)
 }
 
 /* -nxtext: codes the snapshot `pre` (format 1 already compressed into
-   adv) and keeps format 2 only when its texts + block + XMB are
-   smaller, shared duplicates counted once. Writes the XMB either way.
-   On format 2 fills coded[] (tables
-   in snapshot slot order), *block and *savings. -1 after a fatal. */
+   adv) and keeps format 2 whenever it has a token (the loader refuses
+   ntok 0); the index is the print-speed gain, so a larger total is
+   only reported. Writes the XMB either way. On format 2 fills coded[]
+   (tables in snapshot slot order), *block and *savings. -1 after a
+   fatal. */
 static int nxtext_select(Arena *a, Diag *d, const Target *target,
                          Adventure *adv, const Vec_MsgTable *pre,
                          const Vec_Str *final_tokens, int verbose,
@@ -220,14 +221,16 @@ static int nxtext_select(Arena *a, Diag *d, const Target *target,
     if (vec_len_Str(final_tokens) == 0) f1++;
     f2 = r->unique_bytes + r->block_bytes + (vec_len_Message(xraw) ? 4 : 0);
 
-    if (vec_len_Str(r->entries) == 0 || f2 >= f1) {
-        printf("Text format 2 not smaller; format 1 emitted.\n");
+    if (vec_len_Str(r->entries) == 0) {
+        printf("Text format 2 has no tokens; format 1 emitted.\n");
         /* tokselect_compress encoded adv's xmessages; the XMB is raw. */
         adv->xmessages = xraw;
         if (vec_len_Message(xraw) && !emit_xmessages(d, target, adv))
             return -1;
         return 0;
     }
+    if (verbose && f2 >= f1)
+        printf("Text format 2 is %ld bytes larger than format 1.\n", f2 - f1);
 
     for (t = 0; t < TOKSEL_TABLES; t++) {
         const Vec_Message *m = vec_at_MsgTable(pre, t);

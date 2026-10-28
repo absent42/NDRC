@@ -32,9 +32,9 @@
   duplicate.
 - New `-nxtext` option (NEXTDAAD only, implies `-auto-tokens`) emits
   NextDAAD text format 2 - Huffman-coded texts and XMB with an indexed
-  dictionary of up to 383 tokens, version byte bit 7 set - when it is
-  smaller than the format 1 build, and otherwise emits format 1 with a
-  notice. `-x` and `--tok` are refused with it.
+  dictionary of up to 383 tokens, version byte bit 7 set - whenever
+  the selection finds a token; `-v` reports a build that came out
+  larger than format 1. `-x` and `--tok` are refused with it.
 
 ## v0.3.0 - 25/10/2026
 
