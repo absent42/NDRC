@@ -219,9 +219,12 @@ block size. Format 2 texts are stored as is (no XOR) and duplicate
 texts are still emitted once. `-no-object-tokens` does not apply when
 format 2 is emitted: object texts are coded like every other text.
 
-A format 2 build always ends its size report with
-`Part A is <n> bytes, text region is <n> bytes.` after the total, and
-`-v` adds a `Text region` line to the address map. Part A over 65535 is
+A format 2 build adds
+`Part A is <n> bytes, text region is <n> bytes.` to the size report after
+the total, and `-v` adds a `Text region` line to the address map; its
+value is part A's length (the region's file offset), not a memory
+address. The `Database ends at address` line is the end of part A.
+Part A over 65535 is
 the usual `DDB file goes <n> bytes over the 65535 memory address
 boundary`; a region over 65535 is
 `Text region goes <n> bytes over the 65535 limit` (exit 2, no DDB

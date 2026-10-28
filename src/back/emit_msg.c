@@ -64,9 +64,7 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
             }
         }
 
-        /* PORT: drb.php:534 - addPaddingIfRequired runs before the
-           per-message dump decision is acted on, against the DDB's own
-           $currentAddress regardless of dump_this_to_xmb. */
+        /* Not in DRC: format 2 text goes to the region, no padding. */
         if (region) {
             offsets[i] = (long)str_len(region);
             bytes = str_bytes(m->Text);
@@ -78,6 +76,9 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
             continue;
         }
 
+        /* PORT: drb.php:534 - addPaddingIfRequired runs before the
+           per-message dump decision is acted on, against the DDB's own
+           $currentAddress regardless of dump_this_to_xmb. */
         layout_pad(out, addr, t);
 
         if (dump_this_to_xmb) {

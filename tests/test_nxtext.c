@@ -795,20 +795,24 @@ static char *synth_pro7(int n)
 
 /* BLANK_EN variant with nmsg messages of mlen synthetic characters and
    nent process entries; runs -nxtext into dir/out.ddb. */
-static int synth_run(const char *dir, int nmsg, int mlen, int nent,
+static char synth_store[250][600];
+
+static int synth_run(const char *dir, int nmsg, int mlen, int nent, int xmes,
                      char *dsf, char *out, char *logp, int *rc)
 {
-    static char store[250][600];
+    static const char xpro[] =
+        "/PRO 7\r\n\r\n> _       _     XMES    \"Hello.\"\r\n";
     const char *ptrs[250];
     char args[3000], *pro7 = NULL;
     unsigned seed = 12345u;
     int k, ok;
 
     for (k = 0; k < nmsg; k++) {
-        synth_text(store[k], mlen, &seed);
-        ptrs[k] = store[k];
+        synth_text(synth_store[k], mlen, &seed);
+        ptrs[k] = synth_store[k];
     }
     if (nent > 0 && (pro7 = synth_pro7(nent)) == NULL) return 0;
+    if (xmes && nent == 0 && (pro7 = strdup(xpro)) == NULL) return 0;
     snprintf(dsf, 700, "%s/SYN.DSF", dir);
     snprintf(out, 700, "%s/out.ddb", dir);
     snprintf(logp, 700, "%s/log.txt", dir);
@@ -830,7 +834,7 @@ TEST(file_over_64k_fits_both_budgets)
     int rc = -1;
 
     scratch_dir(dir, sizeof dir, "ndrc_nx_big");
-    CHECK(synth_run(dir, 200, 100, NENT_BIG, dsf, out, logp, &rc));
+    CHECK(synth_run(dir, 200, 100, NENT_BIG, 0, dsf, out, logp, &rc));
     CHECK_INT(rc, 0);
     CHECK(log_contains(logp, "Text format 2:"));
     n = file_size(out);
@@ -841,9 +845,20 @@ TEST(file_over_64k_fits_both_budgets)
         if (read_file(out, big, sizeof big, &m) == NULL || m < 0x22) return;
         part_a = (long)word_at(big, 0x20);
         region = m - part_a;
-        CHECK(part_a > 0 && part_a + region == m);
-        CHECK(region > 0 && region < 65536);
+        CHECK(part_a > 0 && region > 0 && region < 65536);
         CHECK_INT(word_at(big, 0x08), 0);
+        {
+            Block2 b;
+            char t[1024];
+            int ks[2] = { 0, 199 }, q;
+
+            CHECK(block2_parse(big, m, &b));
+            for (q = 0; q < 2; q++) {
+                CHECK(region_text(&b, ddb_lookup_word(big, 1, ks[q]), t,
+                                  sizeof t));
+                CHECK_STR(t, synth_store[ks[q]]);
+            }
+        }
         {
             char want[128];
             snprintf(want, sizeof want,
@@ -860,12 +875,26 @@ TEST(region_over_limit_fails)
     int rc = -1;
 
     scratch_dir(dir, sizeof dir, "ndrc_nx_rover");
-    CHECK(synth_run(dir, 250, 400, 0, dsf, out, logp, &rc));
+    CHECK(synth_run(dir, 250, 400, 0, 0, dsf, out, logp, &rc));
     CHECK_INT(rc, 2);
-    CHECK(log_contains(logp, "Text format 2:"));
     CHECK(log_contains(logp, "Text region goes "));
     CHECK(log_contains(logp, " bytes over the 65535 limit"));
     CHECK(file_size(out) < 0);
+}
+
+TEST(region_over_limit_with_xmessage_writes_nothing)
+{
+    char dir[512], dsf[700], out[700], logp[700], xmb[700];
+    int rc = -1;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_rovx");
+    snprintf(xmb, sizeof xmb, "%s/0.XMB", dir);
+    remove(xmb);
+    CHECK(synth_run(dir, 250, 400, 0, 1, dsf, out, logp, &rc));
+    CHECK_INT(rc, 2);
+    CHECK(log_contains(logp, "bytes over the 65535 limit"));
+    CHECK(file_size(out) < 0);
+    CHECK(file_size(xmb) < 0);
 }
 
 TEST(part_a_over_limit_fails)
@@ -874,7 +903,7 @@ TEST(part_a_over_limit_fails)
     int rc = -1;
 
     scratch_dir(dir, sizeof dir, "ndrc_nx_aover");
-    CHECK(synth_run(dir, 2, 20, 2300, dsf, out, logp, &rc));
+    CHECK(synth_run(dir, 2, 20, 2300, 0, dsf, out, logp, &rc));
     CHECK_INT(rc, 2);
     CHECK(log_contains(logp, "memory address boundary"));
     CHECK(file_size(out) < 0);
@@ -968,6 +997,7 @@ int main(void)
     RUN(region_shares_duplicates);
     RUN(file_over_64k_fits_both_budgets);
     RUN(region_over_limit_fails);
+    RUN(region_over_limit_with_xmessage_writes_nothing);
     RUN(part_a_over_limit_fails);
     RUN(forced_base_word32_is_length);
     RUN(format1_untouched);

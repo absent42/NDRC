@@ -274,6 +274,12 @@ static int nxtext_select(Arena *a, Diag *d, const Target *target,
         }
     }
     *block = text2_block(a, r);
+    /* Early region limit so an overflow writes no 0.XMB; emission re-checks. */
+    if (r->region_bytes > 65535) {
+        diag_fatal(d, "Text region goes %ld bytes over the 65535 limit",
+                   r->region_bytes - 65535L);
+        return -1;
+    }
     if (vec_len_Str(xcoded) &&
         !emit_xmessages2(d, target, adv, xcoded,
                          (unsigned)str_bytes(*block)[5] |

@@ -13,20 +13,20 @@
 typedef struct {
     int alphabet383;            /* flag bit 0 */
     Vec_Str *tokens;            /* ntok entries, raw bytes (pre-nesting) */
-    Vec_Str *entries;           /* ntok entries as emitted (length-prefixed body, may hold refs) */
+    Vec_Str *entries;           /* ntok entries as emitted (may hold refs) */
     unsigned char lengths[HUFF_MAXSYM]; unsigned nsym;   /* 256 or 511 */
     Vec_Str *coded;             /* one coded stream per corpus string, in corpus order */
     long text_bytes, block_bytes;
     long unique_bytes;          /* text_bytes less shared duplicate streams */
-    long region_bytes;          /* block_bytes + coded bytes of group >= 0 strings, duplicates once */
+    long region_bytes;          /* block_bytes + group >= 0 coded bytes, dups once */
 } Text2Result;
 
 /* Runs the two-round costed selection for maxtok 128 and 383, codes every
    string, nests entries, and returns the smaller of the two by
    unique_bytes + block_bytes among those with region_bytes <= region_max;
    if neither fits, the smaller region_bytes (caller reports). group[i] >= 0
-   lets string i share an equal
-   earlier stream of the same group (emit_messages' share); NULL or a
+   lets string i share an equal earlier stream of the same group
+   (emit_messages' share); NULL or a
    negative group never shares. Deterministic. ntok may be 0 (no usable
    repeats; the backend falls back to format 1). Returns NULL after a
    fatal diagnostic when a text byte is 128 or above. */

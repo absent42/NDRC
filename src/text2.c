@@ -322,9 +322,11 @@ Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings,
     r128 = build_one(a, d, strings, 128);
     r383 = build_one(a, d, strings, 383);
     r128->unique_bytes = unique_bytes(r128->coded, group, 1);
-    r128->region_bytes = r128->block_bytes + unique_bytes(r128->coded, group, 0);
+    r128->region_bytes = r128->block_bytes +
+                         unique_bytes(r128->coded, group, 0);
     r383->unique_bytes = unique_bytes(r383->coded, group, 1);
-    r383->region_bytes = r383->block_bytes + unique_bytes(r383->coded, group, 0);
+    r383->region_bytes = r383->block_bytes +
+                         unique_bytes(r383->coded, group, 0);
     fit128 = r128->region_bytes <= region_max;
     fit383 = r383->region_bytes <= region_max;
     if (fit128 != fit383) return fit383 ? r383 : r128;
