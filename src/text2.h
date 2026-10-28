@@ -22,9 +22,8 @@ typedef struct {
 /* Runs the two-round costed selection for maxtok 128 and 383, codes every
    string, nests entries, and returns the smaller of the two by
    text_bytes + block_bytes. Deterministic. ntok may be 0 (no usable
-   repeats; the backend falls back to format 1). At most 256 distinct
-   symbols are used; the interpreter's symbol list is 256 entries.
-   Returns NULL after a fatal diagnostic when a text byte is 128 or above. */
+   repeats; the backend falls back to format 1). Returns NULL after a
+   fatal diagnostic when a text byte is 128 or above. */
 Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings);
 
 /* Serialises the text block (magic, flags, ntok, fingerprint, lengths, index, entries). */

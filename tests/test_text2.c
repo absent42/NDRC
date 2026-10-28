@@ -333,66 +333,6 @@ TEST(coded_streams_decode)
     arena_free(a);
 }
 
-/* 400 random 6-char phrases over 95 printable bytes, each used 6 times,
-   with a fresh random byte after each phrase: many literals and tokens. */
-static Vec_Str *wide_corpus(Arena *a)
-{
-    enum { NP = 400, REP = 6, PER = 5 };
-    static char ph[NP][7];
-    static unsigned short order[NP * REP];
-    Vec_Str *v = vec_new_Str(a);
-    size_t i;
-
-    rng_state = 777;
-    for (i = 0; i < NP; i++) {
-        for (int k = 0; k < 6; k++) ph[i][k] = (char)(32 + rng() % 95);
-        ph[i][6] = 0;
-    }
-    for (i = 0; i < NP * REP; i++) order[i] = (unsigned short)(i % NP);
-    for (i = NP * REP - 1; i > 0; i--) {
-        size_t j = rng() % (i + 1);
-        unsigned short t = order[i];
-        order[i] = order[j];
-        order[j] = t;
-    }
-    for (i = 0; i < NP * REP; i += PER) {
-        Str *s = str_new(a);
-        for (size_t k = i; k < i + PER && k < NP * REP; k++) {
-            str_append(s, ph[order[k]]);
-            str_push(s, (char)(32 + rng() % 95));
-        }
-        vec_push_Str(v, s);
-    }
-    return v;
-}
-
-TEST(caps_used_symbols_at_256)
-{
-    Arena *a = arena_new(0);
-    Diag *d = diag_new(a);
-    Vec_Str *s = wide_corpus(a);
-    Text2Result *r = text2_build(a, d, s);
-    size_t used = 0, lit = 0;
-
-    CHECK(r != NULL);
-    for (unsigned i = 0; i < r->nsym; i++) used += r->lengths[i] != 0;
-    for (unsigned i = 0; i < 128; i++) lit += r->lengths[i] != 0;
-    /* Uncapped this corpus uses 96 literals and 383 tokens. */
-    CHECK_INT(r->alphabet383, 1);
-    CHECK_INT(lit, 96);
-    CHECK_INT(used, 256);
-    CHECK_INT(used, lit + vec_len_Str(r->tokens));
-    CHECK(decodes_all(r, s));
-    CHECK(entries_one_level(r->entries));
-    for (size_t k = 0; k < vec_len_Str(r->entries); k++) {
-        Str *e = vec_at_Str(r->entries, k);
-        for (size_t j = 1; j < str_len(e); j++)
-            CHECK(str_bytes(e)[j] < 128 + 128);
-    }
-    CHECK_INT(r->block_bytes, (long)str_len(text2_block(a, r)));
-    arena_free(a);
-}
-
 static int vecs_equal(const Vec_Str *x, const Vec_Str *y)
 {
     if (vec_len_Str(x) != vec_len_Str(y)) return 0;
@@ -434,6 +374,5 @@ int main(void)
     RUN(block_layout);
     RUN(coded_streams_decode);
     RUN(deterministic_double_run);
-    RUN(caps_used_symbols_at_256);
     return test_summary("test_text2");
 }

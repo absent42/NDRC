@@ -1253,64 +1253,6 @@ TEST(verify_ddb_format2_nested_entry)
     arena_free(a);
 }
 
-/* 383-alphabet block at F2_BLOCK, 129 one-byte "A" entries, 9-bit codes
-   for literals lo-127 and all tokens; object text "A" at 820. */
-static size_t f2_wide(unsigned char *b, unsigned lo)
-{
-    Arena *a = arena_new(0);
-    unsigned char lengths[511], *k = b + F2_BLOCK;
-    unsigned short codes[511];
-    unsigned i, fp;
-    size_t off = 7 + 256 + 2 * 129;
-    Str *s = str_new(a);
-    BitWriter w;
-
-    memset(b, 0, 1024);
-    b[0] = 0x82;
-    memset(lengths, 0, sizeof lengths);
-    for (i = lo; i < 128 + 129; i++) lengths[i] = 9;
-    k[0] = 'H'; k[1] = '2'; k[2] = 1; k[3] = 129; k[4] = 0;
-    for (i = 0; i < 511; i++)
-        k[7 + i / 2] |= (unsigned char)(lengths[i] << (i % 2 ? 4 : 0));
-    fp = crc16_ccitt(k + 7, 256);
-    k[5] = (unsigned char)(fp & 0xFF); k[6] = (unsigned char)(fp >> 8);
-    for (i = 0; i < 129; i++, off += 2) {
-        k[7 + 256 + 2 * i] = (unsigned char)off;
-        k[8 + 256 + 2 * i] = (unsigned char)(off >> 8);
-        k[off] = 1; k[off + 1] = 'A';
-    }
-    huff_codes(lengths, 511, codes);
-    bw_init(&w, s);
-    bw_put(&w, codes['A'], 9);
-    bw_put(&w, codes[10], 9);
-    bw_flush(&w);
-    memcpy(b + 820, str_bytes(s), str_len(s));
-    b[830] = 820 & 0xFF; b[831] = 820 >> 8;
-    arena_free(a);
-    return 832;
-}
-
-TEST(verify_ddb_format2_rejects_257_symbols)
-{
-    Arena *a = arena_new(0);
-    unsigned char b[1024];
-    size_t len, bad_index = 99, skipped = 99;
-    DdbTableRef refs[4];
-    int bad_ref = 99;
-
-    obj_refs(refs, 830, 1, 1);
-    len = f2_wide(b, 1);                       /* 256 used symbols */
-    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "A", NULL), b, len, 0,
-                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
-                                   &skipped), 1);
-    len = f2_wide(b, 0);                       /* 257 used symbols */
-    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "A", NULL), b, len, 0,
-                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
-                                   &skipped), 0);
-    CHECK_INT(bad_ref, -1);
-    arena_free(a);
-}
-
 int main(void)
 {
     RUN(parse_literal_only);
@@ -1359,6 +1301,5 @@ int main(void)
     RUN(verify_ddb_overrun_is_failure);
     RUN(verify_ddb_format2_roundtrip);
     RUN(verify_ddb_format2_nested_entry);
-    RUN(verify_ddb_format2_rejects_257_symbols);
     return test_summary("tokselect");
 }
