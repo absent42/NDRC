@@ -1111,23 +1111,25 @@ TEST(verify_ddb_overrun_is_failure)
     arena_free(a);
 }
 
-/* Format 2 DDB: byte 0 = 0x82, text block at 34 (alphabet 256), coded
-   streams from 200, object lookup words at 240. sym[t] is text t's
-   symbol list ending in 10; returns len. Fills *fp. */
-#define F2_BLOCK 34
+/* Format 2: part A b (byte 0 = 0x82, object lookup words at 240) and
+   region rg (text block at 0, alphabet 256, coded streams from 200).
+   sym[t] is text t's symbol list ending in 10; lookup words are region
+   offsets. Returns part A's length; fills *fp and *rlen. */
 #define F2_TEXT 200
 #define F2_LOOKUP 240
-static size_t f2_build(unsigned char *b, const char **entries, unsigned ntok,
+static size_t f2_build(unsigned char *b, unsigned char *rg,
+                       const char **entries, unsigned ntok,
                        const unsigned char *lengths,
                        const unsigned short *const *sym, size_t ntext,
-                       unsigned *fp)
+                       unsigned *fp, size_t *rlen)
 {
     Arena *a = arena_new(0);
     unsigned short codes[256];
     size_t i, at = F2_TEXT, off = 7 + 128 + 2 * (size_t)ntok, p;
-    unsigned char *k = b + F2_BLOCK;
+    unsigned char *k = rg;
 
     memset(b, 0, 512);
+    memset(rg, 0, 512);
     b[0] = 0x82;
     k[0] = 'H'; k[1] = '2'; k[2] = 0; k[3] = (unsigned char)ntok; k[4] = 0;
     for (i = 0; i < 256; i++)
@@ -1155,22 +1157,72 @@ static size_t f2_build(unsigned char *b, const char **entries, unsigned ntok,
         bw_flush(&w);
         b[F2_LOOKUP + 2 * i] = (unsigned char)at;
         b[F2_LOOKUP + 2 * i + 1] = (unsigned char)(at >> 8);
-        memcpy(b + at, str_bytes(s), str_len(s));
+        memcpy(rg + at, str_bytes(s), str_len(s));
         at += str_len(s);
     }
     arena_free(a);
+    *rlen = at;
     return F2_LOOKUP + 2 * ntext;
 }
 
-TEST(verify_ddb_format2_roundtrip)
+TEST(verify_region_detects_mismatch)
+{
+    Arena *a = arena_new(0);
+    static const char *ent[1] = { "AB" };
+    static const unsigned short s0[] = { 128, 'C', 10 };
+    const unsigned short *syms[1] = { s0 };
+    unsigned char b[512], rg[512], lengths[256];
+    unsigned fp;
+    size_t len, rlen, bad_index = 99, skipped = 99;
+    DdbTableRef refs[4];
+    int bad_ref = 99;
+
+    memset(lengths, 0, sizeof lengths);
+    lengths[128] = 1; lengths['C'] = 2; lengths[10] = 2;
+    len = f2_build(b, rg, ent, 1, lengths, syms, 1, &fp, &rlen);
+    obj_refs(refs, F2_LOOKUP, 1, 1);
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABC", NULL), b, len, 0,
+                                      rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 1);
+    CHECK_INT((long)skipped, 0);
+
+    /* One flipped stream bit. */
+    rg[F2_TEXT] ^= 0x40;
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABC", NULL), b, len, 0,
+                                      rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 0);
+    CHECK_INT(bad_ref, 0);
+    CHECK_INT((long)bad_index, 0);
+    rg[F2_TEXT] ^= 0x40;
+
+    /* A lookup word past the region. */
+    b[F2_LOOKUP] = (unsigned char)rlen;
+    b[F2_LOOKUP + 1] = (unsigned char)(rlen >> 8);
+    bad_ref = 99;
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABC", NULL), b, len, 0,
+                                      rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 0);
+    CHECK_INT(bad_ref, 0);
+
+    /* Lookup table under a base address; words stay region offsets. */
+    b[F2_LOOKUP] = (unsigned char)F2_TEXT;
+    b[F2_LOOKUP + 1] = 0;
+    obj_refs(refs, F2_LOOKUP + 0x801, 1, 1);
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABC", NULL), b, len, 0x801,
+                                      rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 1);
+    arena_free(a);
+}
+
+TEST(verify_region_roundtrip)
 {
     Arena *a = arena_new(0);
     static const char *ent[1] = { "AB" };
     static const unsigned short s0[] = { 128, 'C', 10 }, s1[] = { 'C', 128, 10 };
     const unsigned short *syms[2] = { s0, s1 };
-    unsigned char b[512], lengths[256], x[16];
+    unsigned char b[512], rg[512], lengths[256], x[16];
     unsigned fp;
-    size_t len, bad_index = 99, skipped = 99;
+    size_t len, rlen, bad_index = 99, skipped = 99;
     long xbad = 99;
     long xoff[1] = { 4 };
     DdbTableRef refs[4];
@@ -1180,91 +1232,91 @@ TEST(verify_ddb_format2_roundtrip)
 
     memset(lengths, 0, sizeof lengths);
     lengths[128] = 1; lengths['C'] = 2; lengths[10] = 2;
-    len = f2_build(b, ent, 1, lengths, syms, 2, &fp);
+    len = f2_build(b, rg, ent, 1, lengths, syms, 2, &fp, &rlen);
     obj_refs(refs, F2_LOOKUP, 2, 2);
     add_msg(a, adv->objects, "ABC");
     add_msg(a, adv->objects, "CAB");
     add_msg(a, adv->xmessages, "ABC");
     snap = tokselect_snapshot(a, adv, 1);
-    CHECK_INT(tokselect_verify_ddb(snap, b, len, 0, F2_BLOCK, 0, refs,
-                                   &bad_ref, &bad_index, &skipped), 1);
+    CHECK_INT(tokselect_verify_region(snap, b, len, 0, rg, rlen, 0, refs,
+                                      &bad_ref, &bad_index, &skipped), 1);
 
     /* XMB: "X2" + fingerprint, then text 0's stream at 4. */
     x[0] = 'X'; x[1] = '2';
     x[2] = (unsigned char)(fp & 0xFF); x[3] = (unsigned char)(fp >> 8);
-    memcpy(x + 4, b + F2_TEXT, 1);
-    CHECK_INT(tokselect_verify_xmb2(snap, b, len, 0, F2_BLOCK, x, 5, xoff,
+    memcpy(x + 4, rg + F2_TEXT, 1);
+    CHECK_INT(tokselect_verify_xmb2(snap, rg, rlen, 0, 0, x, 5, xoff,
                                     &xbad), 1);
     x[4] ^= 0x80;
-    CHECK_INT(tokselect_verify_xmb2(snap, b, len, 0, F2_BLOCK, x, 5, xoff,
+    CHECK_INT(tokselect_verify_xmb2(snap, rg, rlen, 0, 0, x, 5, xoff,
                                     &xbad), 0);
     CHECK_INT(xbad, 0);
     x[4] ^= 0x80; x[2] ^= 1;
-    CHECK_INT(tokselect_verify_xmb2(snap, b, len, 0, F2_BLOCK, x, 5, xoff,
+    CHECK_INT(tokselect_verify_xmb2(snap, rg, rlen, 0, 0, x, 5, xoff,
                                     &xbad), 0);
     CHECK_INT(xbad, -1);
 
     /* One flipped bit in text 1: objects, index 1. */
-    b[F2_TEXT + 1] ^= 0x80;
-    CHECK_INT(tokselect_verify_ddb(snap, b, len, 0, F2_BLOCK, 0, refs,
-                                   &bad_ref, &bad_index, &skipped), 0);
+    rg[F2_TEXT + 1] ^= 0x80;
+    CHECK_INT(tokselect_verify_region(snap, b, len, 0, rg, rlen, 0, refs,
+                                      &bad_ref, &bad_index, &skipped), 0);
     CHECK_INT(bad_ref, 0);
     CHECK_STR(refs[bad_ref < 0 ? 0 : bad_ref].name, "objects");
     CHECK_INT((long)bad_index, 1);
-    b[F2_TEXT + 1] ^= 0x80;
+    rg[F2_TEXT + 1] ^= 0x80;
 
     /* Fingerprint no longer matches the lengths: block fault. */
-    b[F2_BLOCK + 5] ^= 1;
+    rg[5] ^= 1;
     bad_ref = 99;
-    CHECK_INT(tokselect_verify_ddb(snap, b, len, 0, F2_BLOCK, 0, refs,
-                                   &bad_ref, &bad_index, &skipped), 0);
+    CHECK_INT(tokselect_verify_region(snap, b, len, 0, rg, rlen, 0, refs,
+                                      &bad_ref, &bad_index, &skipped), 0);
     CHECK_INT(bad_ref, -1);
     arena_free(a);
 }
 
-TEST(verify_ddb_format2_nested_entry)
+TEST(verify_region_nested_entry)
 {
     Arena *a = arena_new(0);
     /* Token 1 = token 0 ("AB") + "CD"; token 0 need not precede it. */
     const char *ent[2] = { "AB", "\x80" "CD" };
     static const unsigned short s0[] = { 129, 'X', 10 };
     const unsigned short *syms[1] = { s0 };
-    unsigned char b[512], lengths[256];
+    unsigned char b[512], rg[512], lengths[256];
     unsigned fp;
-    size_t len, bad_index = 99, skipped = 99;
+    size_t len, rlen, bad_index = 99, skipped = 99;
     DdbTableRef refs[4];
     int bad_ref = 99;
 
     memset(lengths, 0, sizeof lengths);
     lengths[128] = 2; lengths[129] = 2; lengths['X'] = 2; lengths[10] = 2;
-    len = f2_build(b, ent, 2, lengths, syms, 1, &fp);
+    len = f2_build(b, rg, ent, 2, lengths, syms, 1, &fp, &rlen);
     obj_refs(refs, F2_LOOKUP, 1, 1);
-    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
-                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
-                                   &skipped), 1);
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABCDX", NULL), b, len,
+                                      0, rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 1);
 
     /* A set pad bit after the end code. */
-    b[F2_TEXT] |= 1;
-    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
-                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
-                                   &skipped), 0);
+    rg[F2_TEXT] |= 1;
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABCDX", NULL), b, len,
+                                      0, rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 0);
 
     /* Token 0 referencing token 1: the target holds a reference. */
     ent[0] = "\x81";
-    len = f2_build(b, ent, 2, lengths, syms, 1, &fp);
-    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
-                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
-                                   &skipped), 0);
+    len = f2_build(b, rg, ent, 2, lengths, syms, 1, &fp, &rlen);
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABCDX", NULL), b, len,
+                                      0, rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 0);
     CHECK_INT(bad_ref, -1);
 
     /* A reference past ntok. */
     ent[0] = "AB";
     ent[1] = "\x82" "CD";
     bad_ref = 99;
-    len = f2_build(b, ent, 2, lengths, syms, 1, &fp);
-    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
-                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
-                                   &skipped), 0);
+    len = f2_build(b, rg, ent, 2, lengths, syms, 1, &fp, &rlen);
+    CHECK_INT(tokselect_verify_region(obj_snap(a, "ABCDX", NULL), b, len,
+                                      0, rg, rlen, 0, refs, &bad_ref,
+                                      &bad_index, &skipped), 0);
     CHECK_INT(bad_ref, -1);
     arena_free(a);
 }
@@ -1315,7 +1367,8 @@ int main(void)
     RUN(verify_ddb_base_address);
     RUN(verify_ddb_big_endian);
     RUN(verify_ddb_overrun_is_failure);
-    RUN(verify_ddb_format2_roundtrip);
-    RUN(verify_ddb_format2_nested_entry);
+    RUN(verify_region_roundtrip);
+    RUN(verify_region_nested_entry);
+    RUN(verify_region_detects_mismatch);
     return test_summary("tokselect");
 }

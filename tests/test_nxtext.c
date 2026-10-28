@@ -171,9 +171,10 @@ static int text1_at(const unsigned char *src, long slen, long p,
     return 1;
 }
 
-/* The format 2 text block, parsed from a DDB. */
+/* The format 2 text block, parsed from a DDB: part A is word 32 long,
+   the region follows it and holds the block at word 8 (always 0). */
 typedef struct {
-    long at;                     /* block offset */
+    long at;                     /* block file offset = region start */
     unsigned flags, ntok, fingerprint, nsym;
     unsigned char lengths[HUFF_MAXSYM];
     const unsigned char *ddb;
@@ -188,7 +189,8 @@ static int block2_parse(const unsigned char *ddb, long len, Block2 *b)
     memset(b, 0, sizeof *b);
     b->ddb = ddb;
     b->len = len;
-    b->at = (long)word_at(ddb, 0x08);
+    if (len < 0x22 || word_at(ddb, 0x08) != 0) return 0;
+    b->at = (long)word_at(ddb, 0x20) + (long)word_at(ddb, 0x08);
     if (b->at + 7 > len || ddb[b->at] != 'H' || ddb[b->at + 1] != '2')
         return 0;
     b->flags = ddb[b->at + 2];
@@ -232,7 +234,8 @@ static int expand2(const Block2 *b, unsigned t, int depth, char *out,
     return 1;
 }
 
-/* Format 2 stream at src[p]; *used = bytes it occupies. */
+/* Format 2 stream at src[p] (a region offset for DDB texts, src the
+   region); *used = bytes it occupies. */
 static int text2_at(const Block2 *b, const unsigned char *src, long slen,
                     long p, char *out, size_t outsz, long *used)
 {
@@ -255,6 +258,14 @@ static int text2_at(const Block2 *b, const unsigned char *src, long slen,
     out[o] = '\0';
     if (used) *used = (long)((pos + 7) / 8);
     return 1;
+}
+
+/* Region text through its lookup word. */
+static int region_text(const Block2 *b, unsigned word, char *out,
+                       size_t outsz)
+{
+    return text2_at(b, b->ddb + b->at, b->len - b->at, (long)word, out,
+                    outsz, NULL);
 }
 
 static unsigned char ddb_a[65536], ddb_b[65536], xmb_a[65536], xmb_b[65536];
@@ -290,6 +301,8 @@ TEST(nxtext_header_and_block)
 
     CHECK_INT(ddb_b[0], 0x82);
     CHECK_INT(xmb_a[0], 0x83);
+    CHECK_INT(word_at(ddb_b, 0x08), 0);
+    CHECK(word_at(ddb_b, 0x20) < (unsigned)n2);
     CHECK(block2_parse(ddb_b, n2, &b));
     if (b.at == 0) return;
     CHECK(b.ntok >= 1 && b.ntok <= 383);
@@ -307,8 +320,8 @@ TEST(nxtext_header_and_block)
             t1[0] = t2[0] = '\0';
             CHECK(text1_at(ddb_a, n1, ddb_lookup_word(ddb_a, kind, i),
                            ddb_a, n1, t1, sizeof t1));
-            CHECK(text2_at(&b, ddb_b, n2, ddb_lookup_word(ddb_b, kind, i),
-                           t2, sizeof t2, NULL));
+            CHECK(region_text(&b, ddb_lookup_word(ddb_b, kind, i),
+                              t2, sizeof t2));
             if (strcmp(t1, t2) != 0) {
                 CHECK_STR(t2, t1);
                 return;
@@ -655,6 +668,119 @@ TEST(nxtext_duplicates_reported)
     }
 }
 
+/* The DUP fixture: 6 texts x 31 copies. */
+static const char *dup_msgs[6] = {
+    "You are in a small room.", "You are in a long corridor.",
+    "You are in a dark cellar.", "You are in a bright hall.",
+    "You are in a narrow passage.", "You are in a cold kitchen."
+};
+
+TEST(region_layout)
+{
+    char dir[512], dsf[1200], ctl[700], nx[700], logp[700];
+    char args[3000], t1[4096], t2[4096];
+    long n1 = 0, n2 = 0, part_a, region;
+    Block2 b;
+    int kind, i, w;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_region");
+    snprintf(dsf, sizeof dsf, "%s/%s", root, OBJSHARE);
+    snprintf(ctl, sizeof ctl, "%s/ctl.ddb", dir);
+    snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
+    snprintf(logp, sizeof logp, "%s/log.txt", dir);
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens", dsf, ctl);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    CHECK(read_file(ctl, ddb_a, sizeof ddb_a, &n1) != NULL);
+    CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n2) != NULL);
+    if (n1 == 0 || n2 < 0x22) return;
+
+    part_a = (long)word_at(ddb_b, 0x20);
+    region = n2 - part_a;
+    CHECK_INT(word_at(ddb_b, 0x08), 0);
+    CHECK(part_a >= 60 && region >= 7 + 128);
+    if (part_a >= n2) return;
+    CHECK_INT(part_a + region, n2);
+    CHECK_INT(ddb_b[part_a], 'H');
+    CHECK_INT(ddb_b[part_a + 1], '2');
+    /* Part A ends with the processes: every header table sits before A. */
+    for (w = 0x0A; w < 0x20; w += 2)
+        CHECK(word_at(ddb_b, w) < (unsigned)part_a);
+    snprintf(args, sizeof args, "Part A is %ld bytes, text region is %ld bytes.",
+             part_a, region);
+    CHECK(log_contains(logp, args));
+    snprintf(args, sizeof args, "Total DDB size is %ld bytes.", n2);
+    CHECK(log_contains(logp, args));
+    CHECK(block2_parse(ddb_b, n2, &b));
+    if (b.at != part_a) return;
+
+    for (kind = 0; kind < 4; kind++) {
+        int cnt = kind == 3 ? (int)ddb_a[3] : ddb_count(ddb_a, kind);
+        CHECK_INT(kind == 3 ? ddb_b[3] : ddb_count(ddb_b, kind), cnt);
+        for (i = 0; i < cnt; i++) {
+            unsigned word = ddb_lookup_word(ddb_b, kind, i);
+            t1[0] = t2[0] = '\0';
+            CHECK(word > 0 && (long)word < region);
+            CHECK(text1_at(ddb_a, n1, ddb_lookup_word(ddb_a, kind, i),
+                           ddb_a, n1, t1, sizeof t1));
+            CHECK(region_text(&b, word, t2, sizeof t2));
+            if (strcmp(t1, t2) != 0) {
+                CHECK_STR(t2, t1);
+                return;
+            }
+        }
+    }
+}
+
+TEST(region_shares_duplicates)
+{
+    char dir[512], dsf[700], nx[700], logp[700], args[3000];
+    long n = 0;
+    int k;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_rdup");
+    snprintf(dsf, sizeof dsf, "%s/DUP.DSF", dir);
+    snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
+    snprintf(logp, sizeof logp, "%s/log.txt", dir);
+    CHECK(blank_variant(dsf, dup_msgs, 6, 186, NULL));
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n) != NULL);
+    if (n < 0x22) return;
+    CHECK_INT(ddb_count(ddb_b, 1), 186);
+    for (k = 0; k + 6 < 186; k++)
+        CHECK_INT(ddb_lookup_word(ddb_b, 1, k), ddb_lookup_word(ddb_b, 1, k + 6));
+    for (k = 0; k + 1 < 6; k++)
+        CHECK(ddb_lookup_word(ddb_b, 1, k) != ddb_lookup_word(ddb_b, 1, k + 1));
+}
+
+TEST(forced_base_word32_is_length)
+{
+    char dir[512], dsf[1200], nx[700], nb[700], logp[700], args[3000];
+    long n1 = 0, n2 = 0;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_base");
+    snprintf(dsf, sizeof dsf, "%s/%s", root, OBJSHARE);
+    snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
+    snprintf(nb, sizeof nb, "%s/nb.ddb", dir);
+    snprintf(logp, sizeof logp, "%s/log.txt", dir);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -b=1000", dsf, nb);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    CHECK(read_file(nx, ddb_a, sizeof ddb_a, &n1) != NULL);
+    CHECK(read_file(nb, ddb_b, sizeof ddb_b, &n2) != NULL);
+    if (n1 < 0x22 || n2 < 0x22) return;
+    CHECK_INT(n2, n1);
+    CHECK_INT(word_at(ddb_b, 0x20), word_at(ddb_a, 0x20));
+    CHECK_INT(word_at(ddb_b, 0x08), 0);
+    CHECK(word_at(ddb_b, 0x20) < (unsigned)n2);
+    /* Table addresses do move with the base. */
+    CHECK_INT(word_at(ddb_b, 0x0A), word_at(ddb_a, 0x0A) + 1000);
+}
+
 #define GNX "tests/goldens/NXTEXT/"
 
 TEST(format1_untouched)
@@ -714,6 +840,9 @@ int main(void)
     RUN(nxtext_xmb_header);
     RUN(nxtext_xmb_oversize_refused);
     RUN(nxtext_duplicates_reported);
+    RUN(region_layout);
+    RUN(region_shares_duplicates);
+    RUN(forced_base_word32_is_length);
     RUN(format1_untouched);
     return test_summary("nxtext");
 }

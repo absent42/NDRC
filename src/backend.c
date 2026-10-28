@@ -178,6 +178,30 @@ static long table_bytes(const Vec_Message *m, int share)
     return n;
 }
 
+/* Region bytes appended since *mark (0 without a region). */
+static long region_grew(const Str *region, long *mark)
+{
+    long n;
+    if (region == NULL) return 0;
+    n = (long)str_len(region) - *mark;
+    *mark = (long)str_len(region);
+    return n;
+}
+
+/* The emitted-text self-check's fatal; returns the exit code. */
+static int self_check_fatal(Diag *d, const DdbTableRef refs[4], int bad_ref,
+                            size_t bad_index)
+{
+    if (bad_ref < 0)
+        diag_fatal(d, "auto-tokens self-check failed: emitted text "
+                      "block is malformed");
+    else
+        diag_fatal(d, "auto-tokens self-check failed: emitted %s "
+                      "text %lu does not decode back to source",
+                   refs[bad_ref].name, (unsigned long)bad_index);
+    return diag_exit_code(d);
+}
+
 /* -nxtext: codes the snapshot `pre` (format 1 already compressed into
    adv) and keeps format 2 whenever it has a token (the loader refuses
    ntok 0); the index is the print-speed gain, so a larger total is
@@ -265,11 +289,11 @@ static int nxtext_select(Arena *a, Diag *d, const Target *target,
 
 /* Rebuilds the format 2 XMB image from the streams emit_xmessages2
    wrote (headers at each file start, streams at their offsets) and
-   decodes it through the emitted DDB's text block. 0 after a fatal. */
+   decodes it through the text block at region offset 0. 0 after a
+   fatal. */
 static int xmb2_check(Arena *a, Diag *d, const Adventure *adv,
                       const Vec_MsgTable *pre, const Vec_Message *xcoded,
-                      const Str *block, const Str *out, long base_address,
-                      long tokens_addr)
+                      const Str *region)
 {
     long size = adv->xmessage_size, file = adv->xmessage_max_k * 1024, f;
     long bad = -1;
@@ -279,8 +303,8 @@ static int xmb2_check(Arena *a, Diag *d, const Adventure *adv,
     for (f = 0; file > 0 && f + 4 <= size; f += file) {
         img[f] = 'X';
         img[f + 1] = '2';
-        img[f + 2] = str_bytes(block)[5];
-        img[f + 3] = str_bytes(block)[6];
+        img[f + 2] = str_bytes(region)[5];
+        img[f + 3] = str_bytes(region)[6];
     }
     for (k = 0; k < vec_len_Message(xcoded); k++) {
         const Str *c = vec_at_Message(xcoded, k)->Text;
@@ -289,8 +313,8 @@ static int xmb2_check(Arena *a, Diag *d, const Adventure *adv,
         memcpy(img + o, str_bytes(c), str_len(c));
     }
     if (k == vec_len_Message(xcoded) &&
-        tokselect_verify_xmb2(pre, str_bytes(out), str_len(out), base_address,
-                              tokens_addr, img, (size_t)size,
+        tokselect_verify_xmb2(pre, str_bytes(region), str_len(region), 0, 0,
+                              img, (size_t)size,
                               adv->xmessage_offsets, &bad))
         return 1;
     if (bad < 0)
@@ -391,6 +415,11 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     int text2 = 0;                       /* -nxtext chose format 2 */
     Vec_Message *t2_tabs[TOKSEL_TABLES] = { NULL };
     Str *t2_block = NULL;
+    Str *region = NULL;                  /* format 2 text region */
+    long region_mark = 0;                /* region bytes already sized */
+    DdbTableRef refs[4];
+    int bad_ref = 0;
+    size_t bad_index = 0, skipped = 0;
     ShareStats otx_share = { 0, 0 }, stx_share = { 0, 0 };
     ShareStats mtx_share = { 0, 0 }, ltx_share = { 0, 0 };
     long addr;
@@ -798,6 +827,12 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
                                   opts->verbose, t2_tabs, &t2_block,
                                   &text_savings);
             if (text2 < 0) return diag_exit_code(d);
+            if (text2) {
+                /* Block at region offset 0, ahead of every text. */
+                region = str_new(a);
+                str_append_n(region, str_bytes(t2_block), str_len(t2_block));
+                region_mark = (long)str_len(region);
+            }
         }
     }
 
@@ -808,7 +843,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        &xmb_addr are threaded through regardless (unused down that
        branch when the dump flag passed here is 0). */
     emit_messages(out, &addr, target, text2 ? t2_tabs[4] : adv->objects, 0, 0,
-                  xmb_fh, &xmb_addr, NULL, share_texts, text2, &otx_share);
+                  xmb_fh, &xmb_addr, region, share_texts, text2, &otx_share);
     report_share(opts->verbose, &otx_share, "objects", &text_savings);
     /* PORT: drb.php:1942 - the object_data-not-objects quirk (S12/
        S6.6): the lookup table is 2 bytes per OBJECT_DATA entry, not
@@ -817,7 +852,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     object_lookup_offset = addr - 2 * (long)vec_len_ObjectData(adv->object_data);
     print_map_line(opts->verbose, "Object texts      ", object_lookup_offset);
     layout_pad(out, &addr, target);
-    otx_size = addr - previous_address;
+    otx_size = addr - previous_address + region_grew(region, &region_mark);
     previous_address = addr;
 
     /* PORT: drb.php:1947-1951 generateObjectNames. */
@@ -875,21 +910,18 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        map line prints BEFORE the token warnings tokens_compress emits
        internally via diag_verbose - matching the measured reference
        transcript's order exactly. */
-    compressed_text_offset = ts->has_tokens || text2 ? addr : 0;
+    /* Format 2: HDR_TOKENS is the block's region offset, 0. */
+    compressed_text_offset = ts->has_tokens && !text2 ? addr : 0;
     print_map_line(opts->verbose, "Tokens            ", compressed_text_offset);
     if (!ts->optimal_encode) {
         final_tokens = tokens_compress(a, d, adv, ts, classic, &text_savings);
         if (final_tokens == NULL) return diag_exit_code(d);
     }
-    if (text2) {
-        /* Format 2: the text block stands in for the token table. */
-        str_append_n(out, str_bytes(t2_block), str_len(t2_block));
-        addr += (long)str_len(t2_block);
-    } else {
-        tokens_emit(out, final_tokens, &addr);
-    }
+    /* Format 2: the text block went to the region instead. */
+    if (!text2) tokens_emit(out, final_tokens, &addr);
     layout_pad(out, &addr, target);
-    token_size = addr - previous_address;
+    token_size = addr - previous_address
+                 + (text2 ? (long)str_len(t2_block) : 0);
     previous_address = addr;
 
     /* PORT: drb.php:1998-2004 generateSTX, backed by emit_messages.
@@ -897,35 +929,35 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        SYSMESS special case); dump_to_xmb is this task's own local flag,
        matching drb.php:1999's $adventure->dumpToXMB read. */
     emit_messages(out, &addr, target, text2 ? t2_tabs[2] : adv->sysmess,
-                  opts->dump_to_xmb, 1, xmb_fh, &xmb_addr, NULL,
+                  opts->dump_to_xmb, 1, xmb_fh, &xmb_addr, region,
                   share_texts, text2, &stx_share);
     report_share(opts->verbose, &stx_share, "sysmess", &text_savings);
     sysmess_lookup_offset = addr - 2 * (long)vec_len_Message(adv->sysmess);
     print_map_line(opts->verbose, "Sysmess           ", sysmess_lookup_offset);
     layout_pad(out, &addr, target);
-    stx_size = addr - previous_address;
+    stx_size = addr - previous_address + region_grew(region, &region_mark);
     previous_address = addr;
 
     /* PORT: drb.php:2006-2012 generateMTX. */
     emit_messages(out, &addr, target, text2 ? t2_tabs[1] : adv->messages,
-                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, NULL,
+                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, region,
                   share_texts, text2, &mtx_share);
     report_share(opts->verbose, &mtx_share, "messages", &text_savings);
     message_lookup_offset = addr - 2 * (long)vec_len_Message(adv->messages);
     print_map_line(opts->verbose, "Messages          ", message_lookup_offset);
     layout_pad(out, &addr, target);
-    mtx_size = addr - previous_address;
+    mtx_size = addr - previous_address + region_grew(region, &region_mark);
     previous_address = addr;
 
     /* PORT: drb.php:2015-2021 generateLTX. */
     emit_messages(out, &addr, target, text2 ? t2_tabs[0] : adv->locations,
-                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, NULL,
+                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, region,
                   share_texts, text2, &ltx_share);
     report_share(opts->verbose, &ltx_share, "locations", &text_savings);
     location_lookup_offset = addr - 2 * (long)vec_len_Message(adv->locations);
     print_map_line(opts->verbose, "Locations         ", location_lookup_offset);
     layout_pad(out, &addr, target);
-    ltx_size = addr - previous_address;
+    ltx_size = addr - previous_address + region_grew(region, &region_mark);
     previous_address = addr;
 
     /* Not in DRC: decodes the emitted texts through their lookups, which
@@ -940,39 +972,24 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
            the table itself holds one word per object text. */
         long otx_table = object_lookup_offset
             + 2 * ((long)vec_len_ObjectData(adv->object_data) - (long)nobj);
-        DdbTableRef refs[4] = {
-            { 4, otx_table, nobj, nobj, "objects" },
-            { 2, sysmess_lookup_offset, nsys,
-              opts->dump_to_xmb && nsys > 63 ? 63 : nsys, "sysmess" },
-            { 1, message_lookup_offset, nmsg,
-              opts->dump_to_xmb ? 0 : nmsg, "messages" },
-            { 0, location_lookup_offset, nloc,
-              opts->dump_to_xmb ? 0 : nloc, "locations" },
-        };
-        int bad_ref = 0;
-        size_t bad_index = 0, skipped = 0;
-        /* Format 2 is keyed on version bit 7; the header patch sets it too. */
-        if (text2) str_set_u8(out, 0, (adv->v3code ? 3u : 2u) | 0x80u);
-        if (!tokselect_verify_ddb(pre_texts, str_bytes(out),
-                                  str_len(out), base_address,
-                                  compressed_text_offset, target->big_endian,
-                                  refs, &bad_ref, &bad_index, &skipped)) {
-            if (bad_ref < 0)
-                diag_fatal(d, "auto-tokens self-check failed: emitted text "
-                              "block is malformed");
-            else
-                diag_fatal(d, "auto-tokens self-check failed: emitted %s "
-                              "text %lu does not decode back to source",
-                           refs[bad_ref].name, (unsigned long)bad_index);
-            return diag_exit_code(d);
+        refs[0] = (DdbTableRef){ 4, otx_table, nobj, nobj, "objects" };
+        refs[1] = (DdbTableRef){ 2, sysmess_lookup_offset, nsys,
+            opts->dump_to_xmb && nsys > 63 ? 63 : nsys, "sysmess" };
+        refs[2] = (DdbTableRef){ 1, message_lookup_offset, nmsg,
+            opts->dump_to_xmb ? 0 : nmsg, "messages" };
+        refs[3] = (DdbTableRef){ 0, location_lookup_offset, nloc,
+            opts->dump_to_xmb ? 0 : nloc, "locations" };
+        if (!text2) {
+            if (!tokselect_verify_ddb(pre_texts, str_bytes(out),
+                                      str_len(out), base_address,
+                                      compressed_text_offset,
+                                      target->big_endian, refs, &bad_ref,
+                                      &bad_index, &skipped))
+                return self_check_fatal(d, refs, bad_ref, bad_index);
+            if (opts->verbose && skipped > 0)
+                printf("File check: skipped %lu XMB-dumped texts.\n",
+                       (unsigned long)skipped);
         }
-        if (text2 && vec_len_Message(t2_tabs[3]) > 0 &&
-            !xmb2_check(a, d, adv, pre_texts, t2_tabs[3], t2_block, out,
-                        base_address, compressed_text_offset))
-            return diag_exit_code(d);
-        if (opts->verbose && skipped > 0)
-            printf("File check: skipped %lu XMB-dumped texts.\n",
-                   (unsigned long)skipped);
     }
     if (ts->optimal_encode && opts->tok_tee) {
         const char *tee = opts->tok_tee_path != NULL
@@ -1004,6 +1021,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     if (diag_error_count(d) > 0) return diag_exit_code(d);
     process_list_offset = addr - 2 * (long)vec_len_Process(adv->processes);
     print_map_line(opts->verbose, "Processes         ", process_list_offset);
+    if (text2) print_map_line(opts->verbose, "Text region       ",
+                              addr - base_address);
     pro_size = addr - previous_address;
     previous_address = addr;
     (void)pro_size;   /* used below via SIZE PER BLOCK DETAIL */
@@ -1023,6 +1042,8 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
     offsets[10] = object_weight_attr_offset;
     offsets[11] = object_extra_attr_offset;
     offsets[12] = addr;   /* drb.php:2067-2068 fileSize */
+    /* Format 2: part A's length, the region's file offset. */
+    if (text2) offsets[12] = addr - base_address;
     /* PORT: drb.php:2069-2070. If target is PLUS3, put the XMessage size
        instead of the DDB size at the SPARE/filesize header position, as
        it's needed for the +3DOS XMessage support. Dormant in every gate
@@ -1034,6 +1055,26 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
         offsets[12] = adv->xmessage_size;
     }
     emit_header_patch(out, target, adv, offsets, text2);
+
+    /* Format 2: region limit, then every text through its lookup word. */
+    if (text2) {
+        if (str_len(region) > 0xFFFF) {
+            diag_fatal(d, "Text region goes %ld bytes over the 65535 limit",
+                       (long)str_len(region) - 0xFFFFL);
+            return diag_exit_code(d);
+        }
+        if (!tokselect_verify_region(pre_texts, str_bytes(out), str_len(out),
+                                     base_address, str_bytes(region),
+                                     str_len(region), target->big_endian,
+                                     refs, &bad_ref, &bad_index, &skipped))
+            return self_check_fatal(d, refs, bad_ref, bad_index);
+        if (vec_len_Message(t2_tabs[3]) > 0 &&
+            !xmb2_check(a, d, adv, pre_texts, t2_tabs[3], region))
+            return diag_exit_code(d);
+        if (opts->verbose && skipped > 0)
+            printf("File check: skipped %lu XMB-dumped texts.\n",
+                   (unsigned long)skipped);
+    }
 
     /* PORT: drb.php:2074-2075 - fclose($outputFileHandler) then
        fclose($XMBFileHandler), right after the header patch pass. This
@@ -1088,7 +1129,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        "System Mesages" misspelling are both ported verbatim, as is the
        S12.4 defect: "DDB Header & others" prints EXTERNSize a second
        time rather than its own (never separately tracked) size. */
-    ddb_size = addr - base_address;
+    ddb_size = addr - base_address + (text2 ? (long)str_len(region) : 0);
     printf("\nSIZE PER BLOCK DETAIL\n");
     printf("=================================\n");
     printf("Vocabulary          : %5ld bytes\n", voc_size);
@@ -1113,6 +1154,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
         fmt_addr(base_buf, sizeof base_buf, base_address);
         fmt_addr(end_buf, sizeof end_buf, addr);
         printf("Total DDB size is %ld bytes.\n", ddb_size);
+        if (text2)
+            printf("Part A is %ld bytes, text region is %ld bytes.\n",
+                   addr - base_address, (long)str_len(region));
         printf("Database starts at %ld (%s)\n", base_address, base_buf);
         printf("Database ends at address %ld (%s)\n", addr, end_buf);
     }
@@ -1143,6 +1187,9 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        file it already wrote and rewriting it, which this port skips by
        mutating the in-memory Str before the single fwrite below - only
        the resulting bytes are ported, not PHP's rewrite mechanism. */
+    /* Format 2: the region follows part A, inside the prepends and the
+       source map's CRC. */
+    if (text2) str_append_n(out, str_bytes(region), str_len(region));
     unprefixed_len = str_len(out);
     if (opts->prepend_c64) {
         if (opts->verbose) printf("Adding Commodore header\n");

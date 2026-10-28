@@ -772,10 +772,12 @@ static int block2_matches(const Block2 *b, Arena *a, const unsigned char *d,
            memcmp(str_bytes(dec), str_bytes(want), str_len(want)) == 0;
 }
 
-static int verify_ddb2(const Vec_MsgTable *before, const unsigned char *ddb,
-                       size_t ddb_len, long base_addr, long tokens_addr,
-                       int big_endian, const DdbTableRef refs[4],
-                       int *bad_ref, size_t *bad_index, size_t *skipped)
+int tokselect_verify_region(const Vec_MsgTable *before,
+                            const unsigned char *ddb, size_t ddb_len,
+                            long base_addr, const unsigned char *region,
+                            size_t region_len, int big_endian,
+                            const DdbTableRef refs[4], int *bad_ref,
+                            size_t *bad_index, size_t *skipped)
 {
     Arena *scratch;
     Block2 b;
@@ -784,7 +786,7 @@ static int verify_ddb2(const Vec_MsgTable *before, const unsigned char *ddb,
 
     *skipped = 0;
     for (r = 0; r < 4; r++) *skipped += refs[r].count - refs[r].checked;
-    if (!block2_parse(&b, ddb, ddb_len, tokens_addr - base_addr)) {
+    if (!block2_parse(&b, region, region_len, 0)) {
         *bad_ref = -1;
         *bad_index = 0;
         return 0;
@@ -807,7 +809,7 @@ static int verify_ddb2(const Vec_MsgTable *before, const unsigned char *ddb,
             if (lk < 0 || w + 1 >= ddb_len) { ok = 0; break; }
             at = big_endian ? (ddb[w] << 8 | ddb[w + 1])
                             : (ddb[w] | ddb[w + 1] << 8);
-            ok = block2_matches(&b, scratch, ddb, ddb_len, at - base_addr,
+            ok = block2_matches(&b, scratch, region, region_len, at,
                                 vec_at_Message(was, k)->Text);
             if (!ok) break;
         }
@@ -847,10 +849,6 @@ int tokselect_verify_ddb(const Vec_MsgTable *before, const unsigned char *ddb,
                          int big_endian, const DdbTableRef refs[4],
                          int *bad_ref, size_t *bad_index, size_t *skipped)
 {
-    /* Byte 0 is the header version when the text block sits past it. */
-    if (tokens_addr > base_addr && ddb_len > 0 && (ddb[0] & 0x80))
-        return verify_ddb2(before, ddb, ddb_len, base_addr, tokens_addr,
-                           big_endian, refs, bad_ref, bad_index, skipped);
     Arena *scratch = arena_new(0);
     long tok_off = tokens_addr - base_addr;
     size_t tok_at = tok_off < 0 ? ddb_len : (size_t)tok_off;
