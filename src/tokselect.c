@@ -765,6 +765,9 @@ static int block2_matches(const Block2 *b, Arena *a, const unsigned char *d,
             for (j = 1; j <= t[0]; j++) str_push_u8(dec, t[j]);
         }
     }
+    /* Pad bits after the end code must be zero. */
+    for (; pos & 7; pos++)
+        if ((d[at + (long)(pos >> 3)] >> (7 - (pos & 7))) & 1) return 0;
     return str_len(dec) == str_len(want) &&
            memcmp(str_bytes(dec), str_bytes(want), str_len(want)) == 0;
 }

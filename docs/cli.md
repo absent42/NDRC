@@ -196,7 +196,8 @@ the format 2 text block, which starts with the magic "H2".
 
 The compiler builds format 1 as `-auto-tokens` does and format 2 from
 the same texts, and keeps format 2 only when its total (texts, text
-block and XMB) is smaller. Otherwise it emits the format 1 build
+block and XMB, each duplicate text counted once in both formats) is
+smaller. Otherwise it emits the format 1 build
 unchanged and prints, with or without `-v`:
 
     Text format 2 not smaller; format 1 emitted.
@@ -206,7 +207,8 @@ before any token. Under `-v` a format 2 build prints
 `Text format 2: <n> tokens, <bits> bits per symbol, <bytes> text bytes.`
 and the "Compression Tokens" line of the size report gives the text
 block size. Format 2 texts are stored as is (no XOR) and duplicate
-texts are still emitted once.
+texts are still emitted once. `-no-object-tokens` does not apply when
+format 2 is emitted: object texts are coded like every other text.
 
 Under format 2, `0.XMB` is written after coding, with a 4-byte header:
 "X2" and the 16-bit fingerprint (CRC-16 of the text block's code

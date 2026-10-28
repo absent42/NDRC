@@ -20,7 +20,8 @@ void huff_codes(const unsigned char *lengths, unsigned nsym, unsigned short *cod
 
 typedef struct { Str *out; unsigned acc; int nbits; } BitWriter;
 void bw_init(BitWriter *w, Str *out);
-void bw_put(BitWriter *w, unsigned code, unsigned len);   /* MSB first */
+/* Writes the low len bits of code, MSB first; len 0..16. */
+void bw_put(BitWriter *w, unsigned code, unsigned len);
 void bw_flush(BitWriter *w);                               /* zero-pad to a byte */
 
 /* Test/self-check decoder: reads one symbol at bit position *pos (bits

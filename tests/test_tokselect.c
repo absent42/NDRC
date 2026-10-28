@@ -1243,8 +1243,24 @@ TEST(verify_ddb_format2_nested_entry)
                                    F2_BLOCK, 0, refs, &bad_ref, &bad_index,
                                    &skipped), 1);
 
+    /* A set pad bit after the end code. */
+    b[F2_TEXT] |= 1;
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
+                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
+                                   &skipped), 0);
+
     /* Token 0 referencing token 1: the target holds a reference. */
     ent[0] = "\x81";
+    len = f2_build(b, ent, 2, lengths, syms, 1, &fp);
+    CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
+                                   F2_BLOCK, 0, refs, &bad_ref, &bad_index,
+                                   &skipped), 0);
+    CHECK_INT(bad_ref, -1);
+
+    /* A reference past ntok. */
+    ent[0] = "AB";
+    ent[1] = "\x82" "CD";
+    bad_ref = 99;
     len = f2_build(b, ent, 2, lengths, syms, 1, &fp);
     CHECK_INT(tokselect_verify_ddb(obj_snap(a, "ABCDX", NULL), b, len, 0,
                                    F2_BLOCK, 0, refs, &bad_ref, &bad_index,

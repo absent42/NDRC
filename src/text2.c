@@ -282,7 +282,27 @@ static Text2Result *build_one(Arena *a, Diag *d, const Vec_Str *strings,
     return r;
 }
 
-Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings)
+/* Coded bytes with each equal stream of a group counted once. */
+static long unique_bytes(const Vec_Str *coded, const int *group)
+{
+    long n = 0;
+    size_t i, j;
+
+    for (i = 0; i < vec_len_Str(coded); i++) {
+        const Str *c = vec_at_Str(coded, i);
+        for (j = 0; group != NULL && group[i] >= 0 && j < i; j++) {
+            const Str *p = vec_at_Str(coded, j);
+            if (group[j] == group[i] && str_len(p) == str_len(c) &&
+                memcmp(str_bytes(p), str_bytes(c), str_len(c)) == 0)
+                break;
+        }
+        if (group == NULL || group[i] < 0 || j == i) n += (long)str_len(c);
+    }
+    return n;
+}
+
+Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings,
+                         const int *group)
 {
     Text2Result *r128, *r383;
     size_t i, k;
@@ -298,8 +318,10 @@ Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings)
     }
     r128 = build_one(a, d, strings, 128);
     r383 = build_one(a, d, strings, 383);
-    return r383->text_bytes + r383->block_bytes <
-           r128->text_bytes + r128->block_bytes ? r383 : r128;
+    r128->unique_bytes = unique_bytes(r128->coded, group);
+    r383->unique_bytes = unique_bytes(r383->coded, group);
+    return r383->unique_bytes + r383->block_bytes <
+           r128->unique_bytes + r128->block_bytes ? r383 : r128;
 }
 
 Str *text2_block(Arena *a, const Text2Result *r)

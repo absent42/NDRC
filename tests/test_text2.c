@@ -42,7 +42,7 @@ static int entry_has_refs(const Str *e)
     return 0;
 }
 
-/* Every reference targets a lower-numbered (below 128) ref-free entry. */
+/* Every reference targets a reference-free entry in 0-127. */
 static int entries_one_level(const Vec_Str *entries)
 {
     for (size_t i = 0; i < vec_len_Str(entries); i++) {
@@ -52,7 +52,7 @@ static int entries_one_level(const Vec_Str *entries)
         for (size_t k = 1; k < str_len(e); k++) {
             unsigned b = str_bytes(e)[k];
             if (b < 128) continue;
-            if (b - 128 >= vec_len_Str(entries)) return 0;
+            if (b - 128 >= 128 || b - 128 >= vec_len_Str(entries)) return 0;
             if (entry_has_refs(vec_at_Str(entries, b - 128))) return 0;
         }
     }
@@ -70,7 +70,7 @@ static void expand(Str *dec, const Vec_Str *entries, size_t k)
     }
 }
 
-TEST(nests_one_level_lower_only)
+TEST(nests_one_level_reference_free_targets)
 {
     Arena *a = arena_new(0);
     const char *t[] = {"abcdef", "abcd", "ab", "xy"};
@@ -206,7 +206,7 @@ TEST(picks_128_when_383_loses)
 {
     Arena *a = arena_new(0);
     Diag *d = diag_new(a);
-    Text2Result *r = text2_build(a, d, small_corpus(a));
+    Text2Result *r = text2_build(a, d, small_corpus(a), NULL);
     CHECK(r != NULL);
     CHECK_INT(r->alphabet383, 0);
     CHECK_INT(r->nsym, 256);
@@ -218,7 +218,7 @@ TEST(picks_383_when_it_wins)
 {
     Arena *a = arena_new(0);
     Diag *d = diag_new(a);
-    Text2Result *r = text2_build(a, d, phrase_corpus(a));
+    Text2Result *r = text2_build(a, d, phrase_corpus(a), NULL);
     CHECK(r != NULL);
     CHECK_INT(r->alphabet383, 1);
     CHECK_INT(r->nsym, 511);
@@ -320,7 +320,8 @@ TEST(coded_streams_decode)
     Arena *a = arena_new(0);
     Diag *d = diag_new(a);
     Vec_Str *s1 = small_corpus(a), *s2 = phrase_corpus(a);
-    Text2Result *r1 = text2_build(a, d, s1), *r2 = text2_build(a, d, s2);
+    Text2Result *r1 = text2_build(a, d, s1, NULL);
+    Text2Result *r2 = text2_build(a, d, s2, NULL);
 
     CHECK(decodes_all(r1, s1));
     CHECK(decodes_all(r2, s2));
@@ -347,8 +348,8 @@ static int vecs_equal(const Vec_Str *x, const Vec_Str *y)
 TEST(deterministic_double_run)
 {
     Arena *a = arena_new(0), *b = arena_new(0);
-    Text2Result *x = text2_build(a, diag_new(a), phrase_corpus(a));
-    Text2Result *y = text2_build(b, diag_new(b), phrase_corpus(b));
+    Text2Result *x = text2_build(a, diag_new(a), phrase_corpus(a), NULL);
+    Text2Result *y = text2_build(b, diag_new(b), phrase_corpus(b), NULL);
     Str *bx = text2_block(a, x), *by = text2_block(b, y);
 
     CHECK_INT(x->alphabet383, y->alphabet383);
@@ -367,7 +368,7 @@ TEST(deterministic_double_run)
 
 int main(void)
 {
-    RUN(nests_one_level_lower_only);
+    RUN(nests_one_level_reference_free_targets);
     RUN(renumbers_referenced_below_128);
     RUN(picks_128_when_383_loses);
     RUN(picks_383_when_it_wins);

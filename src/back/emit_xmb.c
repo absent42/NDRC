@@ -224,7 +224,10 @@ int emit_xmessages2(Diag *d, const Target *t, Adventure *adv,
 
         /* The stream carries its own end code: no +1 terminator. */
         if (len + current_offset > max_file_size) {
-            fclose(fh);
+            if (fclose(fh) != 0) {
+                diag_fatal(d, "Can't write XMB file %s", filename);
+                return 0;
+            }
             current_file++;
             current_offset = XMB2_HEADER;
             xmb_filename(filename, sizeof filename, current_file, max_file_size);
@@ -236,10 +239,17 @@ int emit_xmessages2(Diag *d, const Target *t, Adventure *adv,
             xmb2_header(fh, fingerprint);
         }
         offsets[i] = current_offset + current_file * max_file_size;
-        fwrite(str_bytes(c), 1, (size_t)len, fh);
+        if (fwrite(str_bytes(c), 1, (size_t)len, fh) != (size_t)len) {
+            fclose(fh);
+            diag_fatal(d, "Can't write XMB file %s", filename);
+            return 0;
+        }
         current_offset += len;
     }
-    fclose(fh);
+    if (fclose(fh) != 0) {
+        diag_fatal(d, "Can't write XMB file %s", filename);
+        return 0;
+    }
 
     if (current_offset > 65535) {
         diag_fatal(d, "XMessages data exceeds 64K");

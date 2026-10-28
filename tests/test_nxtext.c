@@ -280,7 +280,7 @@ TEST(nxtext_header_and_block)
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
     CHECK(log_contains(logp, "Text format 2: "));
-    CHECK(!log_contains(logp, "File check: format 2"));
+    CHECK(!log_contains(logp, "not smaller"));
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v3", dsf, nx3);
     CHECK_INT(run_in(dir, args, logp), 0);
     CHECK(read_file(ctl, ddb_a, sizeof ddb_a, &n1) != NULL);
@@ -379,24 +379,34 @@ TEST(nxtext_refusals)
     snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
     snprintf(logp, sizeof logp, "%s/log.txt", dir);
 
+    remove(nx);
     snprintf(args, sizeof args, "ZX 48K EN \"%s\" \"%s\" -nxtext", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 2);
     CHECK(log_contains(logp, "-nxtext requires the NEXTDAAD target"));
+    CHECK(file_size(nx) < 0);
+    remove(nx);
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -X", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 2);
     CHECK(log_contains(logp, "-X is not available with -nxtext"));
+    CHECK(file_size(nx) < 0);
+    remove(nx);
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" --tok -nxtext", dsf, nx);
     CHECK_INT(run_in(dir, args, logp), 2);
     CHECK(log_contains(logp, "--tok is not available with -nxtext"));
+    CHECK(file_size(nx) < 0);
 
     /* Case-sensitive, like the other NDRC options. */
+    remove(nx);
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -NXTEXT", dsf, nx);
     CHECK(run_in(dir, args, logp) != 0);
+    CHECK(file_size(nx) < 0);
 
     /* --from-json takes it and refuses the same way. */
+    remove(nx);
     snprintf(args, sizeof args, "--from-json ZX 48K EN \"%s\" \"%s\" -nxtext", json, nx);
     CHECK_INT(run_in(dir, args, logp), 2);
     CHECK(log_contains(logp, "-nxtext requires the NEXTDAAD target"));
+    CHECK(file_size(nx) < 0);
     remove(nx);
     snprintf(args, sizeof args, "--from-json NEXTDAAD EN \"%s\" \"%s\" -nxtext", json, nx);
     CHECK_INT(run_in(dir, args, logp), 0);
@@ -569,11 +579,80 @@ static int same_as_golden(const char *dir, const char *dsf, const char *opts,
     return ok;
 }
 
+/* Writes BLANK_EN to out with its empty /MTX replaced by nmsg copies of
+   msgs[k % nset], and pro7 (may be NULL) inserted before /END. */
+static int blank_variant(const char *out, const char *const *msgs,
+                         int nset, int nmsg, const char *pro7)
+{
+    static unsigned char buf[262144];
+    char path[1200];
+    const char *s, *m, *z, *e;
+    long len = 0;
+    FILE *f;
+    int k;
+
+    snprintf(path, sizeof path, "%s/%s", root, BLANK_EN);
+    if (read_file(path, buf, sizeof buf - 1, &len) == NULL) return 0;
+    buf[len] = '\0';
+    s = (const char *)buf;
+    m = strstr(s, "/MTX");
+    z = m ? strstr(m, "/0 \"\"") : NULL;
+    e = strstr(s, "\n/END");
+    if (z == NULL || e == NULL || e < z) return 0;
+    f = fopen(out, "wb");
+    if (f == NULL) return 0;
+    fwrite(s, 1, (size_t)(z - s), f);
+    for (k = 0; k < nmsg; k++)
+        fprintf(f, "/%d \"%s\"\r\n", k, msgs[k % nset]);
+    z = strchr(z, '\n') + 1;
+    fwrite(z, 1, (size_t)(e + 1 - z), f);
+    if (pro7 != NULL) fputs(pro7, f);
+    fputs(e + 1, f);
+    return fclose(f) == 0;
+}
+
+TEST(nxtext_duplicates_never_bigger)
+{
+    /* 6 texts x 31 copies: format 2 won while every copy was counted. */
+    static const char *msgs[6] = {
+        "You are in a small room.", "You are in a long corridor.",
+        "You are in a dark cellar.", "You are in a bright hall.",
+        "You are in a narrow passage.", "You are in a cold kitchen."
+    };
+    char dir[512], dsf[700], ctl[700], nx[700], logp[700], args[3000];
+    long s1, s2, n = 0;
+
+    scratch_dir(dir, sizeof dir, "ndrc_nx_dup");
+    snprintf(dsf, sizeof dsf, "%s/DUP.DSF", dir);
+    snprintf(ctl, sizeof ctl, "%s/ctl.ddb", dir);
+    snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
+    snprintf(logp, sizeof logp, "%s/log.txt", dir);
+    CHECK(blank_variant(dsf, msgs, 6, 186, NULL));
+
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens", dsf, ctl);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    s1 = file_size(ctl);
+    s2 = file_size(nx);
+    CHECK(s1 > 0 && s2 > 0);
+    CHECK(s2 <= s1);
+    CHECK(read_file(nx, ddb_b, sizeof ddb_b, &n) != NULL);
+    if (n > 0 && ddb_b[0] == 2) {
+        CHECK(log_contains(logp, "Text format 2 not smaller; format 1 emitted."));
+        CHECK(files_equal(ctl, nx));
+    }
+}
+
 #define GNX "tests/goldens/NXTEXT/"
 
 TEST(format1_untouched)
 {
-    char dir[512];
+    static const char *none[1] = { "" };
+    static const char pro7[] =
+        "/PRO 7\r\n\r\n> _       _     XMES    \"Hello.\"\r\n";
+    char dir[512], dsf[700], ctl[700], nx[700], xmb[700], xctl[700];
+    char logp[700], args[3000];
 
     /* Goldens: NDRC 3ecdf80 builds of the same fixtures. */
     scratch_dir(dir, sizeof dir, "ndrc_nx_f1");
@@ -588,6 +667,28 @@ TEST(format1_untouched)
     /* A -nxtext fallback is the -auto-tokens build. */
     CHECK(same_as_golden(dir, OBJSHARE, "-nxtext", GNX "OBJSHARE_auto.ddb", NULL));
     CHECK(same_as_golden(dir, BLANK_EN, "-nxtext", GNX "BLANK_EN_auto.ddb", NULL));
+
+    /* Fallback with a short XMESSAGE: DDB and 0.XMB as -auto-tokens. */
+    snprintf(dsf, sizeof dsf, "%s/XSHORT.DSF", dir);
+    snprintf(ctl, sizeof ctl, "%s/ctl.ddb", dir);
+    snprintf(nx, sizeof nx, "%s/nx.ddb", dir);
+    snprintf(xmb, sizeof xmb, "%s/0.XMB", dir);
+    snprintf(xctl, sizeof xctl, "%s/ctl.XMB", dir);
+    snprintf(logp, sizeof logp, "%s/log.txt", dir);
+    CHECK(blank_variant(dsf, none, 1, 1, pro7));
+    remove(xmb);
+    remove(xctl);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -auto-tokens", dsf, ctl);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    CHECK(rename(xmb, xctl) == 0);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, nx);
+    CHECK_INT(run_in(dir, args, logp), 0);
+    CHECK(log_contains(logp, "Text format 2 not smaller; format 1 emitted."));
+    CHECK(file_size(xctl) > 0);
+    CHECK(files_equal(ctl, nx));
+    CHECK(files_equal(xmb, xctl));
+    remove(xmb);
+    remove(xctl);
 }
 
 int main(void)
@@ -599,6 +700,7 @@ int main(void)
     RUN(nxtext_refusals);
     RUN(nxtext_xmb_header);
     RUN(nxtext_xmb_oversize_refused);
+    RUN(nxtext_duplicates_never_bigger);
     RUN(format1_untouched);
     return test_summary("nxtext");
 }

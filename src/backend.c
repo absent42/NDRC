@@ -159,18 +159,29 @@ static int text2_decodes_to(Arena *a, const Text2Result *r, const Str *c,
            memcmp(str_bytes(dec), str_bytes(want), str_len(want)) == 0;
 }
 
-static long table_bytes(const Vec_Message *m)
+/* Text bytes + terminators; with share, equal texts count once
+   (emit_messages' share within one table). */
+static long table_bytes(const Vec_Message *m, int share)
 {
     long n = 0;
-    size_t i;
-    for (i = 0; m != NULL && i < vec_len_Message(m); i++)
-        n += (long)str_len(vec_at_Message(m, i)->Text) + 1;
+    size_t i, j;
+    for (i = 0; m != NULL && i < vec_len_Message(m); i++) {
+        const Str *s = vec_at_Message(m, i)->Text;
+        for (j = 0; share && j < i; j++) {
+            const Str *p = vec_at_Message(m, j)->Text;
+            if (str_len(p) == str_len(s) &&
+                memcmp(str_bytes(p), str_bytes(s), str_len(s)) == 0)
+                break;
+        }
+        if (!share || j == i) n += (long)str_len(s) + 1;
+    }
     return n;
 }
 
 /* -nxtext: codes the snapshot `pre` (format 1 already compressed into
    adv) and keeps format 2 only when its texts + block + XMB are
-   smaller. Writes the XMB either way. On format 2 fills coded[] (tables
+   smaller, shared duplicates counted once. Writes the XMB either way.
+   On format 2 fills coded[] (tables
    in snapshot slot order), *block and *savings. -1 after a fatal. */
 static int nxtext_select(Arena *a, Diag *d, const Target *target,
                          Adventure *adv, const Vec_MsgTable *pre,
@@ -182,24 +193,32 @@ static int nxtext_select(Arena *a, Diag *d, const Target *target,
     Vec_Message *xraw = vec_at_MsgTable(pre, 3);
     Text2Result *r;
     long f1 = 0, f2, original = 0, bits = 0, syms = 0;
-    size_t t, k, idx = 0;
+    size_t t, k, idx = 0, total = 0;
+    int *group;
 
+    for (t = 0; t < TOKSEL_TABLES; t++)
+        total += vec_len_Message(vec_at_MsgTable(pre, t));
+    group = arena_alloc(a, (total + 1) * sizeof(*group));
     for (t = 0; t < TOKSEL_TABLES; t++) {
         const Vec_Message *m = vec_at_MsgTable(pre, t);
-        for (k = 0; k < vec_len_Message(m); k++)
+        for (k = 0; k < vec_len_Message(m); k++, idx++) {
             vec_push_Str(corpus, vec_at_Message(m, k)->Text);
-        original += table_bytes(m);
+            /* Slot 3 (XMB) is never shared; -X is refused. */
+            group[idx] = t == 3 ? -1 : (int)t;
+        }
+        original += table_bytes(m, 0);
     }
-    r = text2_build(a, d, corpus);
+    idx = 0;
+    r = text2_build(a, d, corpus, group);
     if (r == NULL) return -1;
 
-    f1 = table_bytes(adv->locations) + table_bytes(adv->messages) +
-         table_bytes(adv->sysmess) + table_bytes(adv->objects) +
-         table_bytes(xraw);
+    f1 = table_bytes(adv->locations, 1) + table_bytes(adv->messages, 1) +
+         table_bytes(adv->sysmess, 1) + table_bytes(adv->objects, 1) +
+         table_bytes(xraw, 0);
     for (k = 0; k < vec_len_Str(final_tokens); k++)
         f1 += (long)str_len(vec_at_Str(final_tokens, k));
     if (vec_len_Str(final_tokens) == 0) f1++;
-    f2 = r->text_bytes + r->block_bytes + (vec_len_Message(xraw) ? 4 : 0);
+    f2 = r->unique_bytes + r->block_bytes + (vec_len_Message(xraw) ? 4 : 0);
 
     if (vec_len_Str(r->entries) == 0 || f2 >= f1) {
         printf("Text format 2 not smaller; format 1 emitted.\n");

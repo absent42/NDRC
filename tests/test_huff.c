@@ -33,6 +33,28 @@ TEST(lengths_two_symbols)
     CHECK_INT(lengths[1], 1);
 }
 
+TEST(lengths_single_symbol)
+{
+    unsigned long counts[256];
+    unsigned char lengths[256];
+    unsigned short codes[256];
+    const unsigned char zero = 0x00, one = 0x80;
+    size_t pos = 0;
+
+    memset(counts, 0, sizeof counts);
+    counts[10] = 7;
+    CHECK_INT(huff_lengths(counts, 256, lengths), 0);
+    CHECK_INT(lengths[10], 1);
+    for (unsigned i = 0; i < 256; i++)
+        if (i != 10) CHECK_INT(lengths[i], 0);
+    huff_codes(lengths, 256, codes);
+    CHECK_INT(codes[10], 0);
+    CHECK_INT(huff_decode_one(lengths, 256, &zero, 1, &pos), 10);
+    CHECK_INT((int)pos, 1);
+    pos = 0;
+    CHECK_INT(huff_decode_one(lengths, 256, &one, 1, &pos), -1);
+}
+
 TEST(lengths_match_entropy_order)
 {
     unsigned long counts[256];
@@ -177,6 +199,7 @@ TEST(crc16_known_vector)
 int main(void)
 {
     RUN(lengths_two_symbols);
+    RUN(lengths_single_symbol);
     RUN(lengths_match_entropy_order);
     RUN(limit_15_on_skewed_counts);
     RUN(rejects_too_many_symbols);

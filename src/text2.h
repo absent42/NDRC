@@ -17,14 +17,18 @@ typedef struct {
     unsigned char lengths[HUFF_MAXSYM]; unsigned nsym;   /* 256 or 511 */
     Vec_Str *coded;             /* one coded stream per corpus string, in corpus order */
     long text_bytes, block_bytes;
+    long unique_bytes;          /* text_bytes less shared duplicate streams */
 } Text2Result;
 
 /* Runs the two-round costed selection for maxtok 128 and 383, codes every
    string, nests entries, and returns the smaller of the two by
-   text_bytes + block_bytes. Deterministic. ntok may be 0 (no usable
+   unique_bytes + block_bytes. group[i] >= 0 lets string i share an equal
+   earlier stream of the same group (emit_messages' share); NULL or a
+   negative group never shares. Deterministic. ntok may be 0 (no usable
    repeats; the backend falls back to format 1). Returns NULL after a
    fatal diagnostic when a text byte is 128 or above. */
-Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings);
+Text2Result *text2_build(Arena *a, Diag *d, const Vec_Str *strings,
+                         const int *group);
 
 /* Serialises the text block (magic, flags, ntok, fingerprint, lengths, index, entries). */
 Str *text2_block(Arena *a, const Text2Result *r);
