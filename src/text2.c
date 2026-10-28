@@ -11,6 +11,7 @@
 #define T2_TAB_BITS 8
 #define T2_EOM 10
 #define T2_REFMAX 128     /* entry refs reach tokens 0-127 */
+#define T2_MAXUSED 256    /* interpreter's resident symbol list */
 
 /* Token indices bucketed by first byte, token order kept in a bucket. */
 typedef struct { size_t off[257]; size_t *idx; } Buckets;
@@ -230,12 +231,36 @@ static Text2Result *build_one(Arena *a, Diag *d, const Vec_Str *strings,
                                  lit2, (int)ref2, T2_TAB_BITS, T2_MAXLEN);
     st = encode(a, strings, t2, lit2, ref2);
 
+    /* Cap used symbols at T2_MAXUSED: drop the least-used token (ties: the
+       higher number) and re-encode, until the stream fits. */
+    for (;;) {
+        char litused[128];
+        size_t used = 0, victim = 0;
+        long vu = 0;
+        ntok = vec_len_Str(t2);
+        uses = arena_calloc(a, (ntok + 1) * sizeof(*uses));
+        memset(litused, 0, sizeof litused);
+        for (i = 0; i < st->count; i++)
+            for (k = 0; k < st->n[i]; k++) {
+                unsigned v = st->sym[i][k];
+                if (v >= 128) uses[v - 128]++;
+                else litused[v] = 1;
+            }
+        for (k = 0; k < 128; k++) used += litused[k] != 0;
+        for (k = 0; k < ntok; k++)
+            if (uses[k] > 0) {
+                used++;
+                if (vu == 0 || uses[k] <= vu) { vu = uses[k]; victim = k; }
+            }
+        if (used <= T2_MAXUSED) break;
+        t3 = vec_new_Str(a);
+        for (k = 0; k < ntok; k++)
+            if (k != victim) vec_push_Str(t3, vec_at_Str(t2, k));
+        t2 = t3;
+        st = encode(a, strings, t2, lit2, ref2);
+    }
+
     /* Drop tokens the round 2 stream never uses. */
-    ntok = vec_len_Str(t2);
-    uses = arena_calloc(a, (ntok + 1) * sizeof(*uses));
-    for (i = 0; i < st->count; i++)
-        for (k = 0; k < st->n[i]; k++)
-            if (st->sym[i][k] >= 128) uses[st->sym[i][k] - 128]++;
     keep = arena_alloc(a, (ntok + 1) * sizeof(*keep));
     t3 = vec_new_Str(a);
     for (k = 0; k < ntok; k++) {

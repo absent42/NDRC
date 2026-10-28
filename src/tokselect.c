@@ -703,7 +703,8 @@ static int block2_parse(Block2 *b, const unsigned char *ddb, size_t len,
         offs[l + 1] = (unsigned short)(offs[l] + b->count[l]);
     for (i = 0; i < nsym; i++)
         if (lengths[i]) { b->sym[offs[lengths[i]]++] = (unsigned short)i; n++; }
-    if (n == 0) return 0;
+    /* The interpreter's resident symbol list holds 256 entries. */
+    if (n == 0 || n > 256) return 0;
 
     for (i = 0; i < b->ntok; i++) {
         const unsigned char *w = p + 7 + lbytes + 2 * i;
