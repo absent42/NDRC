@@ -812,12 +812,12 @@ static int synth_run(const char *dir, int nmsg, int mlen, int nent, int xmes,
         ptrs[k] = synth_store[k];
     }
     if (nent > 0 && (pro7 = synth_pro7(nent)) == NULL) return 0;
-    if (xmes && nent == 0 && (pro7 = strdup(xpro)) == NULL) return 0;
     snprintf(dsf, 700, "%s/SYN.DSF", dir);
     snprintf(out, 700, "%s/out.ddb", dir);
     snprintf(logp, 700, "%s/log.txt", dir);
     remove(out);
-    ok = blank_variant(dsf, ptrs, nmsg, nmsg, pro7);
+    ok = blank_variant(dsf, ptrs, nmsg, nmsg,
+                       pro7 ? pro7 : (xmes ? xpro : NULL));
     free(pro7);
     if (!ok) return 0;
     snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, out);
