@@ -52,12 +52,15 @@ int emit_externs(Str *out, long *addr, Diag *d, Adventure *adv, const Target *t)
    share: a text equal to an earlier one in the same call and destination
    reuses its offset and writes nothing. stats (nullable) accumulates
    texts shared and bytes not written (text + terminator).
+   region (nullable): when set, texts append to it instead of out, the
+   lookup word is the region offset, and no pad runs; the table still
+   goes to out. Not valid with dump_to_xmb.
    raw: bytes go out as is with no 0x0A terminator (text format 2
    streams carry their own end code and padding). */
 typedef struct { long texts; long bytes; } ShareStats;
 
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
-                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
+                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr, Str *region,
                     int share, int raw, ShareStats *stats);
 
 /* PORT: generateXMessages drb.php:449-524. Writes the XMB file(s) into

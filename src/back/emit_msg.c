@@ -18,6 +18,7 @@
    parity being checked regardless of which handle receives the bytes. */
 #include "emit.h"
 
+#include <assert.h>
 #include <string.h>
 
 #include "arena.h"
@@ -26,7 +27,7 @@
 #define LAST_DEFAULT_SYSMESS 62   /* drb.php:36 */
 
 void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
-                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr,
+                    int dump_to_xmb, int is_stx, FILE *xmb, long *xmb_addr, Str *region,
                     int share, int raw, ShareStats *stats)
 {
     size_t n = vec_len_Message(msgs);
@@ -34,6 +35,7 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
     unsigned char *dest = (share && n) ? arena_alloc(str_arena(out), n) : NULL;
     size_t i;
 
+    assert(!(region && dump_to_xmb));
     for (i = 0; i < n; i++) {
         const Message *m = vec_at_Message(msgs, i);
         /* PORT: drb.php:532. STX's default system messages always go to
@@ -65,6 +67,17 @@ void emit_messages(Str *out, long *addr, const Target *t, Vec_Message *msgs,
         /* PORT: drb.php:534 - addPaddingIfRequired runs before the
            per-message dump decision is acted on, against the DDB's own
            $currentAddress regardless of dump_this_to_xmb. */
+        if (region) {
+            offsets[i] = (long)str_len(region);
+            bytes = str_bytes(m->Text);
+            len = str_len(m->Text);
+            for (j = 0; j < len; j++)
+                str_push_u8(region, raw ? bytes[j] : bytes[j] ^ OFUSCATE_VALUE);
+            if (!raw)
+                str_push_u8(region, 0x0Au ^ OFUSCATE_VALUE);
+            continue;
+        }
+
         layout_pad(out, addr, t);
 
         if (dump_this_to_xmb) {

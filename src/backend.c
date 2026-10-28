@@ -808,7 +808,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        &xmb_addr are threaded through regardless (unused down that
        branch when the dump flag passed here is 0). */
     emit_messages(out, &addr, target, text2 ? t2_tabs[4] : adv->objects, 0, 0,
-                  xmb_fh, &xmb_addr, share_texts, text2, &otx_share);
+                  xmb_fh, &xmb_addr, NULL, share_texts, text2, &otx_share);
     report_share(opts->verbose, &otx_share, "objects", &text_savings);
     /* PORT: drb.php:1942 - the object_data-not-objects quirk (S12/
        S6.6): the lookup table is 2 bytes per OBJECT_DATA entry, not
@@ -897,7 +897,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
        SYSMESS special case); dump_to_xmb is this task's own local flag,
        matching drb.php:1999's $adventure->dumpToXMB read. */
     emit_messages(out, &addr, target, text2 ? t2_tabs[2] : adv->sysmess,
-                  opts->dump_to_xmb, 1, xmb_fh, &xmb_addr,
+                  opts->dump_to_xmb, 1, xmb_fh, &xmb_addr, NULL,
                   share_texts, text2, &stx_share);
     report_share(opts->verbose, &stx_share, "sysmess", &text_savings);
     sysmess_lookup_offset = addr - 2 * (long)vec_len_Message(adv->sysmess);
@@ -908,7 +908,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
 
     /* PORT: drb.php:2006-2012 generateMTX. */
     emit_messages(out, &addr, target, text2 ? t2_tabs[1] : adv->messages,
-                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
+                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, NULL,
                   share_texts, text2, &mtx_share);
     report_share(opts->verbose, &mtx_share, "messages", &text_savings);
     message_lookup_offset = addr - 2 * (long)vec_len_Message(adv->messages);
@@ -919,7 +919,7 @@ int backend_run(Arena *a, Diag *d, const unsigned char *json_data,
 
     /* PORT: drb.php:2015-2021 generateLTX. */
     emit_messages(out, &addr, target, text2 ? t2_tabs[0] : adv->locations,
-                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr,
+                  opts->dump_to_xmb, 0, xmb_fh, &xmb_addr, NULL,
                   share_texts, text2, &ltx_share);
     report_share(opts->verbose, &ltx_share, "locations", &text_savings);
     location_lookup_offset = addr - 2 * (long)vec_len_Message(adv->locations);

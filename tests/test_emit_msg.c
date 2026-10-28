@@ -42,7 +42,7 @@ TEST(share_off_is_byte_identical)
     long addr = 0;
 
     CHECK(t != NULL);
-    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 0, 0, NULL);
+    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, NULL, 0, 0, NULL);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -64,7 +64,7 @@ TEST(share_on_repeats_lookup_word)
     ShareStats stats = { 0, 0 };
     long addr = 0, addr2 = 0;
 
-    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 1, 0, &stats);
+    emit_messages(out, &addr, t, make_table(a, texts, 3), 0, 0, NULL, NULL, NULL, 1, 0, &stats);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -73,7 +73,7 @@ TEST(share_on_repeats_lookup_word)
     CHECK_INT(stats.bytes, 2);
 
     /* NULL stats: same bytes. */
-    emit_messages(out2, &addr2, t, make_table(a, texts, 3), 0, 0, NULL, NULL, 1, 0, NULL);
+    emit_messages(out2, &addr2, t, make_table(a, texts, 3), 0, 0, NULL, NULL, NULL, 1, 0, NULL);
     CHECK_INT(str_len(out2), sizeof(want));
     CHECK_MEM(str_bytes(out2), want, sizeof(want));
     arena_free(a);
@@ -91,7 +91,7 @@ TEST(share_first_occurrence_keeps_copy)
     ShareStats stats = { 0, 0 };
     long addr = 0;
 
-    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, 1, 0, &stats);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, NULL, 1, 0, &stats);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -112,7 +112,7 @@ TEST(share_empty_texts)
     ShareStats stats = { 0, 0 };
     long addr = 0;
 
-    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 2), 0, 0, NULL, NULL, 1, 0, &stats);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 2), 0, 0, NULL, NULL, NULL, 1, 0, &stats);
 
     CHECK_INT(str_len(out), sizeof(want));
     CHECK_MEM(str_bytes(out), want, sizeof(want));
@@ -151,7 +151,7 @@ TEST(share_never_crosses_destinations)
         arena_free(a);
         return;
     }
-    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 65), 1, 1, xmb, &xmb_addr, 1, 0, &stats);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 65), 1, 1, xmb, &xmb_addr, NULL, 1, 0, &stats);
 
     /* 63 RAM texts of 4 bytes, then 65 words. */
     CHECK_INT(str_len(out), 63 * 4 + 65 * 2);
@@ -171,6 +171,67 @@ TEST(share_never_crosses_destinations)
     arena_free(a);
 }
 
+TEST(region_mode_offsets)
+{
+    static const unsigned char want[] = { 10, 0, 12, 0, 15, 0 };
+    const char *texts[] = { "ab", "cde", "f" };
+    Arena *a = arena_new(0);
+    Str *out = str_new(a);
+    Str *region = str_new(a);
+    long addr = 0;
+    int i;
+
+    for (i = 0; i < 10; i++)
+        str_push_u8(region, 0x55);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, region, 0, 1, NULL);
+
+    CHECK_INT(str_len(region), 16);
+    CHECK_MEM(str_bytes(region) + 10, "abcdef", 6);
+    CHECK_INT(str_len(out), sizeof(want));
+    CHECK_MEM(str_bytes(out), want, sizeof(want));
+    CHECK_INT(addr, sizeof(want));
+    arena_free(a);
+}
+
+TEST(region_mode_shares)
+{
+    static const unsigned char want[] = { 10, 0, 10, 0, 12, 0 };
+    const char *texts[] = { "ab", "ab", "c" };
+    Arena *a = arena_new(0);
+    Str *out = str_new(a);
+    Str *region = str_new(a);
+    ShareStats stats = { 0, 0 };
+    long addr = 0;
+    int i;
+
+    for (i = 0; i < 10; i++)
+        str_push_u8(region, 0x55);
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, region, 1, 1, &stats);
+
+    CHECK_INT(str_len(region), 13);
+    CHECK_INT(str_len(out), sizeof(want));
+    CHECK_MEM(str_bytes(out), want, sizeof(want));
+    CHECK_INT(stats.texts, 1);
+    arena_free(a);
+}
+
+TEST(region_null_unchanged)
+{
+    static const unsigned char want[] = {
+        0xBE, 0xF5, 0xBD, 0xF5, 0xBE, 0xF5,
+        0x00, 0x00, 0x02, 0x00, 0x04, 0x00
+    };
+    const char *texts[] = { "A", "B", "A" };
+    Arena *a = arena_new(0);
+    Str *out = str_new(a);
+    long addr = 0;
+
+    emit_messages(out, &addr, nextdaad(), make_table(a, texts, 3), 0, 0, NULL, NULL, NULL, 0, 0, NULL);
+    CHECK_INT(str_len(out), sizeof(want));
+    CHECK_MEM(str_bytes(out), want, sizeof(want));
+    arena_free(a);
+}
+
 int main(void)
 {
     RUN(share_off_is_byte_identical);
@@ -178,5 +239,8 @@ int main(void)
     RUN(share_first_occurrence_keeps_copy);
     RUN(share_empty_texts);
     RUN(share_never_crosses_destinations);
+    RUN(region_mode_offsets);
+    RUN(region_mode_shares);
+    RUN(region_null_unchanged);
     return test_summary("emit_msg");
 }
