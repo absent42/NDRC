@@ -760,30 +760,36 @@ TEST(region_shares_duplicates)
     }
 }
 
-/* Seeded pseudo-random letters and spaces, no real text. */
+/* Seeded pseudo-random letters, digits, space and full stop; no real text. */
 static void synth_text(char *out, int len, unsigned *seed)
 {
     int i;
 
     for (i = 0; i < len; i++) {
         *seed = *seed * 1103515245u + 12345u;
-        unsigned r = (*seed >> 16) % 32;
-        out[i] = r < 26 ? (char)('a' + r) : ' ';
+        unsigned r = (*seed >> 16) % 64;
+        out[i] = r < 26 ? (char)('a' + r) : r < 52 ? (char)('A' + r - 26)
+               : r < 62 ? (char)('0' + r - 52) : r == 62 ? ' ' : '.';
     }
     out[len] = '\0';
 }
 
-/* PRO 7 text of n one-condact entries. */
+/* PRO 7 text of n entries of 10 PLUS condacts each. */
 static char *synth_pro7(int n)
 {
-    size_t sz = 32 + (size_t)n * 40;
+    size_t sz = 32 + (size_t)n * 400;
     char *p = malloc(sz), *w = p;
-    int i;
+    int i, j;
 
     if (p == NULL) return NULL;
     w += sprintf(w, "/PRO 7\r\n\r\n");
-    for (i = 0; i < n; i++)
-        w += sprintf(w, "> _       _     SET     %d\r\n", 100 + i % 100);
+    /* Entries differ so the compiler cannot share them. */
+    for (i = 0; i < n; i++) {
+        w += sprintf(w, "> _       _     PLUS    %d %d\r\n", 50 + i % 200, 1);
+        w += sprintf(w, "                PLUS    %d %d\r\n", 50 + i / 200, 1);
+        for (j = 2; j < 10; j++)
+            w += sprintf(w, "                PLUS    %d %d\r\n", 50 + (i * 7 + j * 31) % 200, j);
+    }
     return p;
 }
 
@@ -810,12 +816,12 @@ static int synth_run(const char *dir, int nmsg, int mlen, int nent,
     ok = blank_variant(dsf, ptrs, nmsg, nmsg, pro7);
     free(pro7);
     if (!ok) return 0;
-    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext", dsf, out);
+    snprintf(args, sizeof args, "NEXTDAAD EN \"%s\" \"%s\" -nxtext -v", dsf, out);
     *rc = run_in(dir, args, logp);
     return 1;
 }
 
-#define NENT_BIG 14500
+#define NENT_BIG 1800
 
 TEST(file_over_64k_fits_both_budgets)
 {
@@ -826,6 +832,7 @@ TEST(file_over_64k_fits_both_budgets)
     scratch_dir(dir, sizeof dir, "ndrc_nx_big");
     CHECK(synth_run(dir, 200, 100, NENT_BIG, dsf, out, logp, &rc));
     CHECK_INT(rc, 0);
+    CHECK(log_contains(logp, "Text format 2:"));
     n = file_size(out);
     CHECK(n > 65535);
     {
@@ -834,7 +841,7 @@ TEST(file_over_64k_fits_both_budgets)
         if (read_file(out, big, sizeof big, &m) == NULL || m < 0x22) return;
         part_a = (long)word_at(big, 0x20);
         region = m - part_a;
-        CHECK(part_a < 65536);
+        CHECK(part_a > 0 && part_a + region == m);
         CHECK(region > 0 && region < 65536);
         CHECK_INT(word_at(big, 0x08), 0);
         {
@@ -853,8 +860,9 @@ TEST(region_over_limit_fails)
     int rc = -1;
 
     scratch_dir(dir, sizeof dir, "ndrc_nx_rover");
-    CHECK(synth_run(dir, 250, 500, 0, dsf, out, logp, &rc));
+    CHECK(synth_run(dir, 250, 400, 0, dsf, out, logp, &rc));
     CHECK_INT(rc, 2);
+    CHECK(log_contains(logp, "Text format 2:"));
     CHECK(log_contains(logp, "Text region goes "));
     CHECK(log_contains(logp, " bytes over the 65535 limit"));
     CHECK(file_size(out) < 0);
@@ -866,7 +874,7 @@ TEST(part_a_over_limit_fails)
     int rc = -1;
 
     scratch_dir(dir, sizeof dir, "ndrc_nx_aover");
-    CHECK(synth_run(dir, 2, 20, 17500, dsf, out, logp, &rc));
+    CHECK(synth_run(dir, 2, 20, 2300, dsf, out, logp, &rc));
     CHECK_INT(rc, 2);
     CHECK(log_contains(logp, "memory address boundary"));
     CHECK(file_size(out) < 0);
