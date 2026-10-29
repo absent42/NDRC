@@ -25,4 +25,4 @@ src/front/lex_tables.h -text
 tests/oracle/lex_tables.canon -text
 
 # -nxtext format 1 goldens (NDRC 3ecdf80 builds)
-tests/goldens/NXTEXT/* -text
+tests/nxtext/goldens/* -text

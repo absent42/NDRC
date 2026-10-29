@@ -934,7 +934,7 @@ TEST(forced_base_word32_is_length)
     CHECK_INT(word_at(ddb_b, 0x0A), word_at(ddb_a, 0x0A) + 1000);
 }
 
-#define GNX "tests/goldens/NXTEXT/"
+#define GNX "tests/nxtext/goldens/"
 
 TEST(format1_untouched)
 {
