@@ -1,8 +1,6 @@
 # NDRC - Next DAAD Reborn Compiler
 
-NDRC compiles DAAD Adventure Writer game source code (.DSF) into a DAAD database (.DDB). NDRC is one self-contained executable with no other dependencies or installation requirements, for Windows and Linux. NDRC is also extended further 
-bringing enhanced text compression for all DAAD targets, with further extended 
-text compression and database sizes for NextDAAD.
+NDRC compiles DAAD Adventure Writer game source code (.DSF) into a DAAD database (.DDB). NDRC is one self-contained executable with no other dependencies or installation requirements, for Windows and Linux. It is also features increased text compression for all DAAD targets compared to DRC, and with further enhanced text compression and larger database sizes for NextDAAD.
 
 It is a from-scratch C port of DRC, Uto's DAAD Reborn Compiler (a
 FreePascal front end and a PHP back end), verified byte-identical
