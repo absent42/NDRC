@@ -1,6 +1,8 @@
 # NDRC - Next DAAD Reborn Compiler
 
-NDRC compiles DAAD Adventure Writer game source code (.DSF) into a DAAD database (.DDB). NDRC is one self-contained executable with no other dependencies or installation requirements, for Windows and Linux.
+NDRC compiles DAAD Adventure Writer game source code (.DSF) into a DAAD database (.DDB). NDRC is one self-contained executable with no other dependencies or installation requirements, for Windows and Linux. NDRC is also extended further 
+bringing enhanced text compression for all DAAD targets, with further extended 
+text compression and database sizes for NextDAAD.
 
 It is a from-scratch C port of DRC, Uto's DAAD Reborn Compiler (a
 FreePascal front end and a PHP back end), verified byte-identical
@@ -103,6 +105,11 @@ releases, refuse the file cleanly.
   prints faster: in CSpect a full location description in Rabenstein
   prints in 27 ms against 68 ms for the same game in the classic
   format.
+- **Texts past 64K.** The coded texts move out of the 64K database
+  into a text region of their own, so a game gets up to 64K for its
+  logic (header, vocabulary, processes) and up to another 64K for its
+  text: a DDB can reach 131,070 bytes. The game's logic keeps the room
+  the texts used to take.
 
 `-nxtext` implies `-auto-tokens` and works for the NEXTDAAD target
 only. Small games get format 2 too, for the print speed; under `-v`
@@ -112,26 +119,44 @@ details and the refused option combinations.
 
 ## Compression comparison
 
-Whole DDB size in bytes, compiled by NDRC v0.4.0. "DRC" is NDRC with no
-compression option, which is byte-identical to DRC. The classic column
-uses the PC target, because the two largest games do not fit the ZX
-48K memory map; every classic target saves a similar share.
+Game data size in bytes, compiled by NDRC v0.4.0: the whole DDB, plus
+`0.XMB` for the games marked † that keep text in XMESSAGEs. "DRC"
+is NDRC with no compression option, which is byte-identical to DRC.
+The classic column uses the PC target, because the largest games do
+not fit the ZX 48K memory map; every classic target saves a similar
+share.
 
 | Game | Classic DRC | Classic `-auto-tokens` | NextDAAD DRC | NextDAAD `-auto-tokens` | NextDAAD `-nxtext` |
 |------|------:|------:|------:|------:|------:|
 | Rollercoaster | 10,346 | 9,680 (-6.4%) | 10,029 | 9,372 (-6.6%) | 9,296 (-7.3%) |
 | Abracadabra 1 (Spanish) | 15,722 | 14,790 (-5.9%) | 15,235 | 14,249 (-6.5%) | 13,906 (-8.7%) |
 | Dracula Part 1 | 19,334 | 18,034 (-6.7%) | 19,087 | 17,793 (-6.8%) | 16,709 (-12.5%) |
+| The Greedy Dwarf | 22,026 | 19,988 (-9.3%) | 21,417 | 19,337 (-9.7%) | 18,548 (-13.4%) |
 | Rabenstein | 23,198 | 21,582 (-7.0%) | 22,756 | 21,072 (-7.4%) | 19,495 (-14.3%) |
+| Voyage of the Beano † | 31,542 | 29,458 (-6.6%) | 30,767 | 28,668 (-6.8%) | 25,942 (-15.7%) |
 | The Beast \* | 38,632 | 35,380 (-8.4%) | 38,213 | 34,921 (-8.6%) | 29,650 (-22.4%) |
+| The Secret of Barron Wood † | 44,187 | 43,619 (-1.3%) | 43,742 | 43,152 (-1.3%) | 26,238 (-40.0%) |
 | Murder Mystery Weekend \* | 64,182 | 59,296 (-7.6%) | 63,486 | 58,449 (-7.9%) | 49,065 (-22.7%) |
+| Rambo † ‡ | - | - | 116,109 | 115,685 (-0.4%) | 86,774 (-25.3%) |
 
 \* The full text of the original PAW game in a minimal DSF shell, with
 no game logic. These two show the near-ceiling case: Murder Mystery
 Weekend compiles to within 2K of the 64K limit with DRC, and `-nxtext`
 frees 14K of that.
 
-The percentages are of the whole DDB, which also holds vocabulary,
+† These games keep text in XMESSAGEs, in `0.XMB`. `-auto-tokens`
+compresses only the DDB's texts, while `-nxtext` Huffman-codes the XMB
+too, which is why Barron Wood and Rambo, with most of their text there,
+gain so much more from it: Barron Wood's XMB shrinks from 29,003 to
+11,140 bytes.
+
+‡ Rambo is an unreleased Pascal to DAAD port of the Mindscape text 
+adventure, DDB alone is 65,283 bytes with DRC for NextDAAD, 252
+bytes under the 64K limit, and too big for the PC target. With
+`-nxtext` its logic takes 61,942 bytes and its texts move to a
+4,538-byte text region, leaving the logic 3.5K of room to grow.
+
+The percentages are of the whole game data, which also holds vocabulary,
 processes and other data that compression does not touch, so the
 saving on the text itself is larger. Format 2 gains most on large,
 prose-heavy games, where its bigger dictionary and Huffman coding have

@@ -182,6 +182,15 @@ is emitted most-referenced first: interpreters scan the table from its
 first entry on every reference, so common tokens are found sooner. The
 format is unchanged.
 
+Under `-v` a selecting build prints
+`Auto-tokens: <n> candidates, <n> selected.`, then
+`Compression tokens used: <n>.` (the table length, counting the empty
+entry 0) and `Token table ordered by use.`. A marked `.tok` reload
+prints only the last two. Every table whose duplicates were shared adds
+`Shared <n> duplicate texts in <table> (<n> bytes).`, where the table
+is `objects`, `sysmess`, `messages` or `locations` and the bytes are
+the saving.
+
 ## Text format 2
 
 `-nxtext` lets the compiler emit NextDAAD text format 2, a NEXTDAAD-only
