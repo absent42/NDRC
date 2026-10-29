@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.0 - unreleased
+## v0.4.0 - 29/10/2026
 
 - `-auto-tokens` compresses object texts too: they join the
   compressable set under the optimal encoder.
@@ -34,9 +34,29 @@
   NextDAAD text format 2 - Huffman-coded texts and XMB with an indexed
   dictionary of up to 383 tokens, version byte bit 7 set - whenever
   the selection finds a token; `-v` reports a build that came out
-  larger than format 1. `-x` and `--tok` are refused with it.
-  The coded texts live in a separate 64K text region after part A, so a
-  game can reach 128K of file.
+  larger than format 1. `-x` and `--tok` are refused with it, and
+  `-no-object-tokens` has no effect when format 2 is emitted. Only
+  NextDAAD 0.13.0 or later reads format 2; every other interpreter, and
+  older NextDAAD releases, refuse the file.
+- Under `-nxtext` the coded texts live in a text region after part A
+  (header, tables, vocabulary, processes). Part A and the region are
+  each limited to 65535 bytes, so a DDB can reach 131070. The size
+  report adds `Part A is <n> bytes, text region is <n> bytes.`, `-v`
+  adds a `Text region` line to the address map, and a region that does
+  not fit is `Text region goes <n> bytes over the 65535 limit`.
+- Under `-nxtext` the XMB is Huffman-coded too and starts with an "X2"
+  header carrying the text block's fingerprint, so a stale XMB is
+  detected. An XMESSAGE whose coded text exceeds 8K is an error.
+- The self-check decodes the format 2 text block, every coded text and
+  every XMB stream before the DDB is written.
+- `-v` reports each table's shared duplicates (`Shared <n> duplicate
+  texts in <table> (<n> bytes).`) and the token selection
+  (`Auto-tokens: <n> candidates, <n> selected.`, `Token table ordered
+  by use.`).
+- Text format 2 and the text region were verified on NextDAAD hardware
+  with fixtures covering object, location and message texts,
+  XMESSAGEs, a DDB over 64K, a part switch into it and each refusal
+  case.
 
 ## v0.3.0 - 25/10/2026
 
