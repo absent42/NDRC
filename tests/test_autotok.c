@@ -27,9 +27,12 @@
 
 static void scratch_path(char *buf, size_t bufsz, const char *filename)
 {
+    static char cwd[1024];
     const char *dir = getenv("TMPDIR");
     if (dir == NULL) dir = getenv("TEMP");
     if (dir == NULL) dir = getenv("TMP");
+    /* Absolute: run_ndrc_in chdirs into the scratch dir first. */
+    if (dir == NULL) dir = getcwd(cwd, sizeof cwd);
     if (dir == NULL) dir = ".";
     snprintf(buf, bufsz, "%s/%s", dir, filename);
 }
