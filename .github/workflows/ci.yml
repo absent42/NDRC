@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Build and test
@@ -19,21 +19,21 @@ jobs:
   # x87 80-bit long double the reference computes in, and Apple arm64
   # makes long double a Double - "2^3" lands 1 ulp under 8 there.
   test-clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Build and test under clang
         run: make test CC=clang EXTRA=-Werror
 
   sanitize:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Test under ASan and UBSan
         run: make sanitize
 
   cross-windows:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Install mingw-w64
@@ -43,7 +43,7 @@ jobs:
         run: make CC=x86_64-w64-mingw32-gcc EXTRA=-Werror EXE=.exe
 
   oracle:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -65,7 +65,7 @@ jobs:
         run: python tests/oracle/lexconv.py --check
 
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -117,7 +117,7 @@ jobs:
         run: python tests/oracle/test_cli.py
 
   c23:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Record the runner's compiler inventory
@@ -133,7 +133,7 @@ jobs:
   # them to that release.
   release:
     needs: [test, test-clang, sanitize, cross-windows, oracle, backend, c23]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -164,7 +164,7 @@ jobs:
       - name: Drop the cross-build objects
         run: make clean
       # -static: the release binary must run on any x86_64 glibc distro,
-      # not only the runner's. A dynamic link on ubuntu-latest binds
+      # not only the runner's. A dynamic link on the ubuntu-24.04 runner binds
       # fmod@GLIBC_2.38 and fails on Ubuntu 22.04. Static is safe here:
       # ndrc uses no dlopen or NSS. Verified 2026-09-27: make test passes,
       # runs on glibc 2.35, DDB output byte-identical to the win64 build.
